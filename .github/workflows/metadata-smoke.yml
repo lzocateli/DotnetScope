@@ -1,0 +1,48 @@
+name: Metadata Smoke
+
+# Valida o binário AOT contra o metadata oficial real, detectando mudanças de esquema
+# que as fixtures sintéticas dos testes não capturam.
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: metadata-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Official metadata (linux-x64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build Native AOT binary
+        shell: pwsh
+        run: ./tools/scripts/Invoke-Validation.ps1 -Aot -Engine docker
+
+      - name: Query official metadata
+        shell: bash
+        env:
+          XDG_CACHE_HOME: ${{ runner.temp }}/cache
+        run: |
+          set -euo pipefail
+          bin=./artifacts/aot/linux-x64/dotnetscope
+          "$bin" list --available --verbose
+          "$bin" list --available lts
+          "$bin" list --available sts --prerelease
+          "$bin" list --available SDK-10.0.1xx
+          for component in sdk runtime aspnetcore; do
+            "$bin" list --available lts -c "$component" --output json |
+              jq -e '.resolved.sha512 | test("^[0-9a-f]{128}$")'
+          done
+          "$bin" list --available lts --offline > /dev/null

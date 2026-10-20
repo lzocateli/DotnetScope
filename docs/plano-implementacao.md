@@ -305,8 +305,8 @@ runners efêmeros.
 | Fase | Entrega | Critério de aceite | Estado |
 | --- | --- | --- | --- |
 | F0a | `.github`, `.githooks`, Gitleaks, plano, README, LICENSE | instruções e hook validados | concluída |
-| F0b | `global.json`, `Directory.*.props`, `DotnetScope.slnx`, projetos base, `ExitCodes`, `tools/scripts/Invoke-Validation.ps1`, workflow `pr-validation` | build, testes e AOT `linux-x64` verdes em container e no CI | concluída localmente; CI pendente do primeiro PR |
-| F1 | Parsing, cliente de metadata, cache, `list --available` | resolução correta com fixtures, incluindo `lts`/`sts`/feature band | pendente |
+| F0b | `global.json`, `Directory.*.props`, `DotnetScope.slnx`, projetos base, `ExitCodes`, `tools/scripts/Invoke-Validation.ps1`, workflow `pr-validation` | build, testes e AOT `linux-x64` verdes em container e no CI | concluída |
+| F1 | Parsing, cliente de metadata, cache, `list --available` | resolução correta com fixtures, incluindo `lts`/`sts`/feature band | concluída ([referência](cli.md)) |
 | F2 | `install` user Linux por arquivo, verificação, extração segura, manifesto, lock | SDK funcional em container limpo; casos maliciosos rejeitados | pendente |
 | F3 | `--configure-env` (Linux/macOS), `env show\|apply\|remove`, detecção de conflito | casos obrigatórios da seção 12 verdes | pendente |
 | F4 | `uninstall`, `list --installed`, `doctor [--repair]` | reversão completa e origem correta na listagem | pendente |
@@ -327,3 +327,8 @@ com milestone, e é entregue por PR com as evidências do template.
   globais mistas.
 - Shells não suportados na v1 (nushell, tcsh) apenas recebem instruções.
 - Custo de manter repositório APT assinado e manifests winget/Homebrew.
+- O metadata oficial publica assinatura PKCS#7 destacada (campo `signature`,
+  arquivo `.p7s`). Hoje a confiança no metadata vem do TLS e da allowlist;
+  avaliar a verificação dessa assinatura (compatível com AOT) na F9.
+- Canais antigos (1.0 e 2.0) trazem apenas SHA-256 ou nenhum hash em parte dos
+  arquivos; esses artefatos são listados como indisponíveis e nunca resolvidos.

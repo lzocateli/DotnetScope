@@ -18,7 +18,12 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/DotnetScope.Core/DotnetScope.Core.csproj" />
+    <ProjectReference Include="../../src/DotnetScope.Infrastructure/DotnetScope.Infrastructure.csproj" />
     <ProjectReference Include="../../src/DotnetScope.Cli/DotnetScope.Cli.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../Fixtures/metadata/*.json" LinkBase="Fixtures/metadata" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

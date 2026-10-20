@@ -4,9 +4,19 @@ CLI Native AOT (`dotnetscope`) para instalar, listar, validar e remover SDKs e
 runtimes .NET nos escopos `user` e `global`, com verificação de integridade,
 extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuário.
 
-> **Estado:** em desenvolvimento (fase F1). Ainda não há release publicada.
-> O comportamento descrito abaixo é o planejado; consulte o
+> **Estado:** em desenvolvimento (fase F2). Ainda não há release publicada.
+> Implementado: `list --available` ([referência da CLI](docs/cli.md)). O restante
+> descrito abaixo é planejado; consulte o
 > [plano de implementação](docs/plano-implementacao.md) para fases e decisões.
+
+## Uso disponível
+
+```bash
+dotnetscope list --available                      # canais, fase de suporte e fim do suporte
+dotnetscope list --available 10.0.4xx             # versões da feature band e a que seria resolvida
+dotnetscope list --available lts -c runtime       # runtime do canal LTS mais recente
+dotnetscope list --available SDK-10.0 --output json
+```
 
 ## Uso planejado
 

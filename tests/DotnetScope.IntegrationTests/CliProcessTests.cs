@@ -25,7 +25,43 @@ public sealed class CliProcessTests
         Assert.Contains("--help", result.Error, StringComparison.Ordinal);
     }
 
-    private static async Task<(int ExitCode, string Output, string Error)> RunCliAsync(params string[] args)
+    [Fact]
+    public async Task Processo_ListAvailableOffline_UsaCacheDoUsuarioSemRede()
+    {
+        var home = Path.Combine(Path.GetTempPath(), "dotnetscope-tests", Guid.NewGuid().ToString("N"));
+        var cache = OperatingSystem.IsWindows()
+            ? Path.Combine(home, "dotnetscope", "cache", "metadata")
+            : Path.Combine(home, "dotnetscope", "metadata");
+        Directory.CreateDirectory(cache);
+        foreach (var fixture in Directory.EnumerateFiles(Path.Combine(AppContext.BaseDirectory, "Fixtures", "metadata"), "*.json"))
+        {
+            File.Copy(fixture, Path.Combine(cache, Path.GetFileName(fixture)));
+        }
+
+        try
+        {
+            var environment = new Dictionary<string, string> { ["XDG_CACHE_HOME"] = home, ["LOCALAPPDATA"] = home };
+            var channels = await RunCliAsync(environment, "list", "--available", "--offline");
+            var versions = await RunCliAsync(environment, "list", "--available", "10.0.4xx", "--offline", "--output", "json");
+
+            Assert.Equal(ExitCodes.Success, channels.ExitCode);
+            Assert.Contains("10.0   lts   active", channels.Output, StringComparison.Ordinal);
+            Assert.Equal(ExitCodes.Success, versions.ExitCode);
+            using var document = System.Text.Json.JsonDocument.Parse(versions.Output);
+            Assert.Equal("10.0.402", document.RootElement.GetProperty("resolved").GetProperty("version").GetString());
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    private static Task<(int ExitCode, string Output, string Error)> RunCliAsync(params string[] args) =>
+        RunCliAsync(new Dictionary<string, string>(), args);
+
+    private static async Task<(int ExitCode, string Output, string Error)> RunCliAsync(
+        Dictionary<string, string> environment,
+        params string[] args)
     {
         var cliAssembly = Path.Combine(AppContext.BaseDirectory, "dotnetscope.dll");
         Assert.True(File.Exists(cliAssembly), $"CLI não encontrada em {cliAssembly}");
@@ -40,6 +76,11 @@ public sealed class CliProcessTests
         foreach (var arg in args)
         {
             startInfo.ArgumentList.Add(arg);
+        }
+
+        foreach (var (name, value) in environment)
+        {
+            startInfo.Environment[name] = value;
         }
 
         using var process = Process.Start(startInfo)!;
