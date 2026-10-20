@@ -33,7 +33,7 @@ O repositório não usa Spec Kit. O trabalho segue Issue → fase do plano → b
 
 1. Abra ou referencie uma Issue que descreva o problema, o resultado esperado e a fase do plano.
 2. Crie uma branch `tipo/descricao-curta` a partir de `main`.
-3. Atualize testes, referência da CLI e documentação necessários; valide o menor recorte primeiro e registre evidências no PR.
+3. Atualize testes, referência da CLI e documentação necessários; valide o menor recorte primeiro e registre evidências no PR. A validação completa, igual à do CI, é `pwsh ./tools/scripts/Invoke-Validation.ps1 -Aot`.
 4. Testes que instalam .NET ou editam perfil, registro ou `PATH` rodam apenas em containers ou runners efêmeros, nunca no seu perfil.
 5. Use os [Conventional Commits](COMMIT_CONVENTIONS.md). Push, merge, publicação e deploy exigem autorização separada.
 

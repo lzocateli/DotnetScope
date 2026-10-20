@@ -1,0 +1,35 @@
+<Project>
+  <PropertyGroup>
+    <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Versioning">
+    <!-- Fonte única da versão: releases só sobrescrevem VersionSuffix. -->
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <AssemblyVersion>$([System.Version]::Parse($(VersionPrefix)).Major).0.0.0</AssemblyVersion>
+    <FileVersion>$(VersionPrefix).0</FileVersion>
+    <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Metadata">
+    <Authors>Lincoln Zocateli</Authors>
+    <Product>DotnetScope</Product>
+    <Copyright>Copyright (c) 2026 Lincoln Zocateli</Copyright>
+    <RepositoryUrl>https://github.com/lzocateli/DotnetScope</RepositoryUrl>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsTestProject)' != 'true'" Label="Native AOT">
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+</Project>

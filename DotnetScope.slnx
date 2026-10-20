@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DotnetScope.Core/DotnetScope.Core.csproj" />
+    <Project Path="src/DotnetScope.Infrastructure/DotnetScope.Infrastructure.csproj" />
+    <Project Path="src/DotnetScope.Cli/DotnetScope.Cli.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DotnetScope.UnitTests/DotnetScope.UnitTests.csproj" />
+    <Project Path="tests/DotnetScope.IntegrationTests/DotnetScope.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

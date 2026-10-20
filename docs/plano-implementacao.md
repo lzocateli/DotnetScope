@@ -276,8 +276,10 @@ runners efêmeros.
   `osx-arm64`, `osx-x64`.
 - Native AOT publicado no próprio SO em matriz de CI; Linux glibc compilado na
   base mais antiga suportada pelo .NET 10 (a confirmar na F5).
-- Imagem de build local com SDK 10.0.4xx, `clang` e `zlib1g-dev`, versão fixada
-  (definir na F0: derivada de `lzocateli/dotnet-sdk` ou imagem oficial).
+- Build local e no CI em `docker.io/lzocateli/dotnet-sdk:10.0.402-noble-v1`
+  via `tools/scripts/Invoke-Validation.ps1`; com `-Aot`, `clang` e `zlib1g-dev`
+  são instalados no container descartável (decisão da F0b; imagem própria com
+  toolchain AOT pode ser criada na F5).
 - Artefatos: `dotnetscope-<versão>-<rid>.tar.gz`/`.zip`, `SHA256SUMS`, assinatura,
   SBOM e atestação de proveniência (GitHub Attestations).
 - Canais, em ordem: GitHub Releases + `install.sh`/`install.ps1` (verificam
@@ -303,7 +305,7 @@ runners efêmeros.
 | Fase | Entrega | Critério de aceite | Estado |
 | --- | --- | --- | --- |
 | F0a | `.github`, `.githooks`, Gitleaks, plano, README, LICENSE | instruções e hook validados | concluída |
-| F0b | `global.json`, `Directory.*.props`, `DotnetScope.slnx`, projetos vazios, script de build/teste em container, workflow `pr-validation` | build e testes verdes em container e no CI | pendente |
+| F0b | `global.json`, `Directory.*.props`, `DotnetScope.slnx`, projetos base, `ExitCodes`, `tools/scripts/Invoke-Validation.ps1`, workflow `pr-validation` | build, testes e AOT `linux-x64` verdes em container e no CI | concluída localmente; CI pendente do primeiro PR |
 | F1 | Parsing, cliente de metadata, cache, `list --available` | resolução correta com fixtures, incluindo `lts`/`sts`/feature band | pendente |
 | F2 | `install` user Linux por arquivo, verificação, extração segura, manifesto, lock | SDK funcional em container limpo; casos maliciosos rejeitados | pendente |
 | F3 | `--configure-env` (Linux/macOS), `env show\|apply\|remove`, detecção de conflito | casos obrigatórios da seção 12 verdes | pendente |

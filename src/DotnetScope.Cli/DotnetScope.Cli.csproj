@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>DotnetScope.Cli</RootNamespace>
+    <AssemblyName>dotnetscope</AssemblyName>
+    <PublishAot>true</PublishAot>
+    <StripSymbols>true</StripSymbols>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DotnetScope.Core/DotnetScope.Core.csproj" />
+    <ProjectReference Include="../DotnetScope.Infrastructure/DotnetScope.Infrastructure.csproj" />
+    <InternalsVisibleTo Include="DotnetScope.UnitTests" />
+  </ItemGroup>
+
+</Project>

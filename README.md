@@ -4,7 +4,7 @@ CLI Native AOT (`dotnetscope`) para instalar, listar, validar e remover SDKs e
 runtimes .NET nos escopos `user` e `global`, com verificação de integridade,
 extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuário.
 
-> **Estado:** em desenvolvimento (fase F0). Ainda não há release publicada.
+> **Estado:** em desenvolvimento (fase F1). Ainda não há release publicada.
 > O comportamento descrito abaixo é o planejado; consulte o
 > [plano de implementação](docs/plano-implementacao.md) para fases e decisões.
 
@@ -28,6 +28,13 @@ Blocos e instalações de terceiros nunca são sobrescritos.
 ## Desenvolvimento
 
 - .NET 10 (SDK 10.0.400+) com Native AOT; build e testes executam em containers.
+- Valide como no CI (requer PowerShell 7 e Docker ou Podman; `-Aot` publica e
+  testa o binário nativo `linux-x64` em `artifacts/aot/linux-x64/`):
+
+  ```bash
+  pwsh ./tools/scripts/Invoke-Validation.ps1 -Aot
+  ```
+
 - Instale o hook obrigatório de detecção de secrets (requer PowerShell 7 e
   Docker ou Podman):
 

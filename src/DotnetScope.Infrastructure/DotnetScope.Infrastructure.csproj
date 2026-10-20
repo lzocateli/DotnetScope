@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>DotnetScope.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../DotnetScope.Core/DotnetScope.Core.csproj" />
+    <InternalsVisibleTo Include="DotnetScope.UnitTests" />
+    <InternalsVisibleTo Include="DotnetScope.IntegrationTests" />
+  </ItemGroup>
+
+</Project>
