@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "toolVersion": "0.1.0",
+  "catalogVersion": "2026.10.0",
+  "parameters": {
+    "commit_scopes": "cli,core,metadata,install,env,platform,linux,windows,macos,packaging,tests,docs,tooling,deps,actions,repo",
+    "github_owner": "lzocateli",
+    "github_repo": "DotnetScope",
+    "issue_areas": "CLI,Resolu\u00E7\u00E3o de vers\u00F5es,Instala\u00E7\u00E3o,Ambiente e PATH,Linux,Windows,macOS,Seguran\u00E7a,Empacotamento,CI/CD,Documenta\u00E7\u00E3o,Testes",
+    "license": "MIT",
+    "project_description": "O DotnetScope \u00E9 uma CLI Native AOT que instala, lista, valida e remove SDKs e runtimes .NET nos escopos user e global, com verifica\u00E7\u00E3o de integridade e configura\u00E7\u00E3o opcional do ambiente do usu\u00E1rio.",
+    "project_name": "DotnetScope",
+    "project_slug": "dotnetscope",
+    "secrets_dir_name": "DotnetScope"
+  },
+  "components": [
+    "core",
+    "secret-scanning"
+  ],
+  "files": {
+    ".gitattributes": {
+      "component": "core",
+      "sha256": "a9732bc6b25deabf2dc6755dbb5176c089fd4c7dfb01f07e8e87097aa3cbe858"
+    },
+    ".githooks/pre-commit": {
+      "component": "secret-scanning",
+      "sha256": "f3b9e07d8e7c2b8c2dfe91f1674fc6a06b025da95eca47d040ec6aeff4aa7008"
+    },
+    ".github/ADR_TEMPLATE.md": {
+      "component": "core",
+      "sha256": "fd2950265886441f484fb56783a0a3ba21097fef633a5da7119c956b1768267b"
+    },
+    ".github/CODEOWNERS": {
+      "component": "core",
+      "sha256": "b856db5c064a34191407a878db09f9bf7d7d00af024adaa927e867e0562941c4"
+    },
+    ".github/COMMIT_CONVENTIONS.md": {
+      "component": "core",
+      "sha256": "ae2ab732b0f9baa40b7074219ee61e14445903225a43234b07cfa5eacefa7f00"
+    },
+    ".github/CONTRIBUTING.md": {
+      "component": "core",
+      "sha256": "698b0a7cbaf0dabf5fdba3c582de4e85cf279a9234708e666f43305f650b270d"
+    },
+    ".github/ISSUE_TEMPLATE/architecture-spike.yml": {
+      "component": "core",
+      "sha256": "d5447ca8dc6bdd615dac0a7e3f7fcbf706d51aad882f9592057ee32d1184abd1"
+    },
+    ".github/ISSUE_TEMPLATE/bug.yml": {
+      "component": "core",
+      "sha256": "4772c71332d0aed455255ec5ddf698ccc17fcefdd59c4ff3041d67ad4b0192d6"
+    },
+    ".github/ISSUE_TEMPLATE/config.yml": {
+      "component": "core",
+      "sha256": "128d6489c0d4e05f9a1e86644445410f1cee4d1cd697e20d39f784246013f4bc"
+    },
+    ".github/ISSUE_TEMPLATE/feature.yml": {
+      "component": "core",
+      "sha256": "2cbed2635f25dad170b903215607fac078184c55010c89899586b6c69fe49a8f"
+    },
+    ".github/ISSUE_TEMPLATE/technical-task.yml": {
+      "component": "core",
+      "sha256": "5a1a2771d23e745ae6a715f27cf5c30b434f0c952d2cc15f089b4f8fddb08036"
+    },
+    ".github/PULL_REQUEST_TEMPLATE.md": {
+      "component": "core",
+      "sha256": "0db82f6dc26491a5f6c337e5522bd432e3e49a2cbd9aab9172b99822285e8062"
+    },
+    ".github/SECRET-SCANNING.md": {
+      "component": "secret-scanning",
+      "sha256": "83f681132cf745398c644074b56ceb9e64b9b5716e78259f68b7dad7cf761542"
+    },
+    ".github/SECURITY.md": {
+      "component": "core",
+      "sha256": "7551e7f89002e570d513fd4d50c00e19ef3064886932a973a3c805363dd50cf8"
+    },
+    ".github/copilot-instructions.md": {
+      "component": "core",
+      "sha256": "99460e28b6b71b2da93005e7a64bb99b61ac6588b00b7958783d92aa199b46e6"
+    },
+    ".github/instructions/conventional-commits.instructions.md": {
+      "component": "core",
+      "sha256": "a1196fe04aaa6736dc2d4231acc07d7ebb2319ef84f310c632d83f3f516a2e4d"
+    },
+    ".github/instructions/documentation.instructions.md": {
+      "component": "core",
+      "sha256": "3a2623ee347bc97510f040c2d9a426b88bfe4448a98c51fe2d1447a12aa19c14"
+    },
+    ".github/workflows/gitleaks.yml": {
+      "component": "secret-scanning",
+      "sha256": "0f80a5552db145fc0901bf358459c008df10482f05fff2b8e07463f5433c2bf4"
+    },
+    ".gitleaks.toml": {
+      "component": "secret-scanning",
+      "sha256": "de9544e772d44eec8cdbd1163e428c07d160821967075916034ff339d18e0285"
+    },
+    "tools/scripts/install-gitleaks-hook.ps1": {
+      "component": "secret-scanning",
+      "sha256": "6401236e502918a354c5f27c04076f0f5e35ab78c5aba6ee8c30446097da4ee7"
+    },
+    "tools/scripts/test-gitleaks.ps1": {
+      "component": "secret-scanning",
+      "sha256": "3cc2b432dacfc5af167508c20efc8557774f614ac67338987a2a090360c89502"
+    }
+  }
+}

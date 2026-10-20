@@ -1,0 +1,79 @@
+title = "Repository secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "connection-string-credential"
+description = "Detects hardcoded credentials in connection strings"
+regex = '''(?i)(?:password|pwd|passwd|secret|access[_ -]?key)\s*=\s*('[^']+'|"[^"]+"|[^;\r\n]+)'''
+secretGroup = 1
+keywords = ["password", "pwd", "passwd", "secret", "access_key"]
+tags = ["secret", "connection-string"]
+
+[[rules.allowlists]]
+description = "Runtime references and empty or documented placeholder values, not credentials"
+regexTarget = "secret"
+regexes = [
+	'''^\s*(?:''|"")\s*$''',
+	'''^\s*['"]<[A-Za-z][A-Za-z0-9_-]*>['"]\s*$''',
+	'''^\s*\$(?:(?:env|script):)?[A-Za-z_][A-Za-z0-9_]*\s*\}?\s*$''',
+	'''^\s*['"]?\$\{[A-Za-z_][A-Za-z0-9_]*\}['"]?\s*$''',
+	'''^\s*\$\(ConvertTo-NpgsqlValue \$[A-Za-z_][A-Za-z0-9_]*\)\s*$''',
+	'''^\s*Get-EnvironmentSecret @\((?:['"][A-Z][A-Z0-9_]*['"]|\$[A-Za-z_][A-Za-z0-9_]*)\)\s*$''',
+	'''^\s*Get-EnvironmentFileValue -Path \$[A-Za-z_][A-Za-z0-9_]* -Name ['"][A-Z][A-Z0-9_]*['"]\s*$''',
+	'''^\s*ConvertTo-SecureString \$[A-Za-z_][A-Za-z0-9_]* -AsPlainText -Force\s*$''',
+	'''^\s*Environment\.GetEnvironmentVariable\("[A-Z][A-Z0-9_]*"\)\s*$''',
+	'''^\s*(?:os\.environ\.get|os\.getenv)\(['"][A-Z][A-Z0-9_]*['"]\)\s*$''',
+	'''^\s*_?require_credentials\(\)\s*$''',
+	# Código, não valor: construção de objeto (`secret = new HostSecretRef`) e números de campo/enum do protobuf.
+	'''^\s*new [A-Z][A-Za-z0-9_.]*(?:\(.*|\s*\{?)\s*;?\s*$''',
+	'''^\s*\d+\s*;?\s*$''',
+	# Código, não valor: `await`, indexação, chamada de função, `!!`, construtor seguido de texto e JS minificado.
+	'''^\s*await\s+[A-Za-z_]''',
+	'''^\s*[A-Za-z_][A-Za-z0-9_]*\[\(''',
+	'''^\s*[A-Za-z_$][A-Za-z0-9_$.]*\(\s*(?:[A-Za-z_$][A-Za-z0-9_$.]*|'[^']*'|"[^"]*")?\s*[,)]''',
+	'''^\s*!!''',
+	'''^\s*new [A-Z][A-Za-z0-9_.]*`''',
+	'''^\s*""\s*,''',
+	'''^\s*[A-Za-z_$][A-Za-z0-9_$]*\s*,\s*this\.''',
+	# Placeholder de template (`{{v.secret}}`) e lista de chaves em documentação (`password=`, `secret=`).
+	'''^\s*['"]?\{\{[A-Za-z_][A-Za-z0-9_.]*\}\}''',
+	'''^`,\s*`''',
+]
+
+[[rules]]
+id = "basic-auth-header"
+description = "Detects hardcoded Basic authentication headers"
+regex = '''(?i)\bBasic\s+[A-Za-z0-9+/]{20,}={0,2}'''
+keywords = ["basic"]
+tags = ["secret", "authorization"]
+
+[[rules]]
+id = "bearer-auth-header"
+description = "Detects hardcoded Bearer authentication headers"
+regex = '''(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{20,}'''
+keywords = ["bearer"]
+tags = ["secret", "authorization"]
+
+[[rules]]
+id = "docker-auth"
+description = "Detects encoded Docker registry credentials"
+regex = '''(?i)"auth"\s*:\s*"[A-Za-z0-9+/=]{20,}"'''
+keywords = ["auth"]
+tags = ["secret", "docker"]
+
+[[allowlists]]
+description = "Allow only GitHub Actions secret references, never their values"
+regexes = ['''\$\{\{\s*secrets\.[A-Za-z0-9_]+\s*\}\}''']
+
+[[allowlists]]
+description = "Allow documented non-secret placeholders"
+regexes = ['''(?i)(?:CHANGE_ME|REPLACE_ME|YOUR_[A-Z0-9_]+|<your-[^>]+>)''']
+
+[[allowlists]]
+description = "Canários sintéticos de testes de mascaramento: não são credenciais"
+regexes = [
+	'''\{\{Canary\}\}''',
+	'''(?i)\bcanar(?:y|io)-[a-z]''',
+]

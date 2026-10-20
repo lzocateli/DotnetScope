@@ -1,0 +1,48 @@
+name: Tarefa técnica
+description: Registre manutenção técnica com resultado verificável
+title: "[Task]: "
+labels: ["type:task", "status:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Intake apenas: esta Issue não autoriza execução. Vincule a fase de docs/plano-implementacao.md quando aplicável; a execução exige escopo revisado e autorização explícita do mantenedor."
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objetivo técnico
+      description: Descreva o resultado verificável da tarefa.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexto e arquivos envolvidos
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critérios de aceite
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Prioridade
+      options: [P0 - bloqueador, P1 - alta, P2 - normal, P3 - baixa]
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área responsável
+      multiple: true
+      options: [CLI, Resolução de versões, Instalação, Ambiente e PATH, Linux, Windows, macOS, Segurança, Empacotamento, CI/CD, Documentação, Testes]
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Limites e não escopo
+    validations:
+      required: true

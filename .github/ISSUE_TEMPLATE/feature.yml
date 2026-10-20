@@ -1,0 +1,55 @@
+name: Propor funcionalidade
+description: Descreva um problema e um resultado verificável
+title: "[Feature]: "
+labels: ["type:feature", "status:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Intake apenas: esta Issue não autoriza implementação. Vincule a fase de docs/plano-implementacao.md afetada; a execução exige escopo revisado e autorização explícita do mantenedor."
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema
+      description: Quem é afetado e por quê?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Resultado esperado
+      description: Descreva comportamento observável, não apenas uma implementação.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Escopo e não escopo
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Segurança, compatibilidade e operação
+      description: Considere privilégios, compatibilidade, rollback e auditoria.
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Prioridade percebida
+      options: [P0 - bloqueador, P1 - alta, P2 - normal, P3 - baixa]
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Áreas envolvidas
+      multiple: true
+      options: [CLI, Resolução de versões, Instalação, Ambiente e PATH, Linux, Windows, macOS, Segurança, Empacotamento, CI/CD, Documentação, Testes]
+    validations:
+      required: true
+  - type: checkboxes
+    id: decision
+    attributes:
+      label: Decisão arquitetural
+      options:
+        - label: Avaliei se a proposta exige ADR.
+          required: true

@@ -1,0 +1,56 @@
+name: Relatar defeito
+description: Registre um comportamento incorreto reproduzível
+title: "[Bug]: "
+labels: ["type:bug", "status:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Intake apenas: esta Issue não autoriza correção. A correção ocorre em PR vinculado, com teste de regressão e autorização explícita do mantenedor. Não inclua tokens, chaves, dados reais ou detalhes de vulnerabilidade. Use Security Advisories para segurança."
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Comportamento observado
+      description: O que ocorreu e qual era o resultado esperado?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reprodução mínima
+      description: Passos com dados fictícios.
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Prioridade percebida
+      options: [P0 - bloqueador, P1 - alta, P2 - normal, P3 - baixa]
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área afetada
+      multiple: true
+      options: [CLI, Resolução de versões, Instalação, Ambiente e PATH, Linux, Windows, macOS, Segurança, Empacotamento, CI/CD, Documentação, Testes]
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Plataforma e versões
+      placeholder: "dotnetscope --version, SO e versão, arquitetura, shell, escopo (user/global)"
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidências sanitizadas
+      description: Logs mínimos sem secrets, correlation ID e screenshots quando úteis.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Segurança dos dados
+      options:
+        - label: Removi credenciais, chaves, dados pessoais e conteúdo sensível.
+          required: true
