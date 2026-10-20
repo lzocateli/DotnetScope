@@ -6,7 +6,7 @@ Instala o hook pre-commit obrigatorio de deteccao de secrets do repositorio.
 Configura core.hooksPath como .githooks no clone Git informado e confirma que o
 hook versionado esta disponivel. O hook executa exclusivamente a imagem
 docker.io/lzocateli/gitleaks:8.30.1 por Docker ou Podman e analisa o diff staged
-antes do commit. DOTNETSCOPE_CONTAINER_ENGINE força o engine (docker ou podman).
+antes do commit. DOTNETSCOPE_CONTAINER_ENGINE forca o engine (docker ou podman).
 
 .PARAMETER RepositoryRoot
 Raiz do clone Git. O padrao e dois niveis acima de tools/scripts.

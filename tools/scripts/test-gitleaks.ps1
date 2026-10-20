@@ -18,7 +18,7 @@ Aceita somente --help. Sem argumentos, executa todos os casos.
 
 .NOTES
 Requer PowerShell 7+, Docker ou Podman ativo e docker.io/lzocateli/gitleaks:8.30.1.
-DOTNETSCOPE_CONTAINER_ENGINE força o engine (docker ou podman).
+DOTNETSCOPE_CONTAINER_ENGINE forca o engine (docker ou podman).
 O scanner executa em container read-only, com configuracao montada read-only.
 Fixtures sao enviadas por stdin; o relatorio temporario redigido e removido ao fim.
 
