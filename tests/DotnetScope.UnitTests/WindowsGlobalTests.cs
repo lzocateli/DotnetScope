@@ -152,16 +152,16 @@ public sealed class WindowsGlobalTests : IDisposable
         Assert.Equal(ExitCodes.Usage, result.ExitCode);
     }
 
-    private async Task<(int ExitCode, string Output, string Error, InstallCommandTests.FakeInstaller Installer, WindowsGlobalLayout Layout, List<string> Protected, List<string> Uninstalled)> RunAsync(
+    private async Task<(int ExitCode, string Output, string Error, InstallCommandTests.FakeInstaller Installer, InstallerGlobalLayout Layout, List<string> Protected, List<string> Uninstalled)> RunAsync(
         string[] args,
         string rid = "win-x64",
         bool elevated = true,
-        Action<WindowsGlobalLayout>? prepare = null)
+        Action<InstallerGlobalLayout>? prepare = null)
     {
         using var output = new StringWriter();
         using var error = new StringWriter();
         var installer = new InstallCommandTests.FakeInstaller();
-        var layout = new WindowsGlobalLayout(Path.Combine(_base, "Program Files", "dotnet"), Path.Combine(_base, "ProgramData", "dotnetscope"));
+        var layout = new InstallerGlobalLayout(Path.Combine(_base, "Program Files", "dotnet"), Path.Combine(_base, "ProgramData", "dotnetscope"));
         prepare?.Invoke(layout);
         var protectedPaths = new List<string>();
         var uninstalled = new List<string>();
@@ -169,12 +169,12 @@ public sealed class WindowsGlobalTests : IDisposable
         {
             CreateInstaller = (_, _) => installer,
             CreateGlobalInstaller = (_, _, _) => installer,
-            CreateWindowsSetupInstaller = (_, _, _) => installer,
+            CreateOfficialInstaller = (_, _, _) => installer,
             IsElevated = () => elevated,
             IsRoot = () => false,
             HomeDirectory = () => Path.Combine(_base, "home"),
             FindMissingDependencies = () => [],
-            CreateWindowsGlobalLayout = () => layout,
+            CreateInstallerLayout = _ => layout,
             EnsureProtectedDirectory = protectedPaths.Add,
             UninstallWindowsSetup = (_, record, _, _) =>
             {

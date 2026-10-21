@@ -39,14 +39,14 @@ internal static class UninstallCommand
                 string root;
                 InstallationManifestStore manifest;
                 IUserEnvironmentConfigurator configurator;
-                if (parseResult.GetValue(scope) == "global" && services.DetectRid().StartsWith("win-", StringComparison.Ordinal))
+                if (parseResult.GetValue(scope) == "global" && GlobalScope.UsesOfficialInstaller(services.DetectRid()))
                 {
                     if (parseResult.GetValue(installDir) is not null)
                     {
-                        throw new DotnetScopeException(ExitCodes.Usage, "No Windows, o escopo global não aceita --install-dir: o instalador oficial define a raiz.");
+                        throw new DotnetScopeException(ExitCodes.Usage, "No Windows e no macOS, o escopo global não aceita --install-dir: o instalador oficial define a raiz.");
                     }
 
-                    return await UninstallWindowsAsync(
+                    return await UninstallOfficialAsync(
                         services, request.Component, request.Version, parseResult.GetValue(dryRun), parseResult.GetValue(output) == "json", diagnostics, ct)
                         .ConfigureAwait(false);
                 }
@@ -133,19 +133,34 @@ internal static class UninstallCommand
     }
 
     /// <summary>
-    /// Windows: remove somente instalações registradas pelo dotnetscope, executando o mesmo instalador oficial
-    /// (SHA-512 e Authenticode verificados) com <c>/uninstall</c> (D-F7-4).
+    /// Instalador oficial (D-F7-4): no Windows, remove somente instalações registradas pelo dotnetscope, executando o
+    /// mesmo instalador verificado com <c>/uninstall</c>; no macOS, o <c>.pkg</c> não tem desinstalador e a CLI só orienta.
     /// </summary>
-    private static async Task<int> UninstallWindowsAsync(
+    private static async Task<int> UninstallOfficialAsync(
         CliServices services, ComponentKind component, DotnetVersion version, bool dryRun, bool json, IDiagnosticSink diagnostics, CancellationToken cancellationToken)
     {
-        var layout = GlobalScope.PrepareWindows(services);
+        var rid = services.DetectRid();
+        var windows = rid.StartsWith("win-", StringComparison.Ordinal);
+        var layout = GlobalScope.PrepareInstaller(services, rid);
         var manifest = new InstallationManifestStore(layout.ManifestFile);
         var record = manifest.Read().FirstOrDefault(r =>
-            r.Component == component && r.Version == version.ToString() && r.FileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            r.Component == component && r.Version == version.ToString()
+            && r.FileName.EndsWith(windows ? ".exe" : ".pkg", StringComparison.OrdinalIgnoreCase))
             ?? throw new DotnetScopeException(
                 ExitCodes.NotFound,
-                $"{component.ToName()} {version} não foi instalado pelo dotnetscope no escopo global; use Aplicativos instalados do Windows para outras instalações.");
+                windows
+                    ? $"{component.ToName()} {version} não foi instalado pelo dotnetscope no escopo global; use Aplicativos instalados do Windows para outras instalações."
+                    : $"{component.ToName()} {version} não foi instalado pelo dotnetscope no escopo global.");
+
+        if (!windows)
+        {
+            var folder = component == ComponentKind.Sdk ? $"sdk/{version}" : $"shared/<framework>/{version}";
+            throw new DotnetScopeException(
+                ExitCodes.Usage,
+                $"O instalador .pkg da Microsoft não tem desinstalador; o dotnetscope não remove {component.ToName()} {version} automaticamente. "
+                + $"Remova {record.Root}/{folder} manualmente ou use a ferramenta dotnet-core-uninstall "
+                + "(https://learn.microsoft.com/dotnet/core/install/remove-runtime-sdk-versions?pivots=os-macos).");
+        }
 
         if (!dryRun)
         {

@@ -7,7 +7,7 @@ namespace DotnetScope.Infrastructure.Platform;
 public sealed record UnixFileStatus(int Uid, int Mode);
 
 /// <summary>
-/// Lê dono e permissões com o <c>stat</c> do sistema (coreutils ou BusyBox no Linux). O .NET não expõe o UID do dono,
+/// Lê dono e permissões com o <c>stat</c> do sistema (coreutils ou BusyBox no Linux, BSD no macOS). O .NET não expõe o UID do dono,
 /// e um P/Invoke de <c>stat</c> exigiria layouts de struct distintos por libc e arquitetura.
 /// </summary>
 public static class UnixFileOwnership
@@ -34,8 +34,18 @@ public static class UnixFileOwnership
         startInfo.Environment.Clear();
         startInfo.Environment["LC_ALL"] = "C";
         startInfo.ArgumentList.Add("-L");
-        startInfo.ArgumentList.Add("-c");
-        startInfo.ArgumentList.Add("%u %a");
+        if (OperatingSystem.IsMacOS())
+        {
+            // stat do BSD: %Lp são os bits de permissão em octal.
+            startInfo.ArgumentList.Add("-f");
+            startInfo.ArgumentList.Add("%u %Lp");
+        }
+        else
+        {
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add("%u %a");
+        }
+
         startInfo.ArgumentList.Add("--");
         startInfo.ArgumentList.Add(path);
 

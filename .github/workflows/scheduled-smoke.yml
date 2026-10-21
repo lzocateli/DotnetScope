@@ -91,3 +91,28 @@ jobs:
       - name: Install SDK and runtime, verify registry and revert
         shell: pwsh
         run: ./tools/scripts/Invoke-WindowsE2E.ps1
+
+  install-e2e-macos:
+    name: Install E2E (macOS global scope, ephemeral runner)
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Build Native AOT binary
+        shell: pwsh
+        run: ./tools/scripts/Publish-Aot.ps1 -Rid osx-arm64
+
+      - name: Install runtime with the official .pkg and verify
+        shell: pwsh
+        run: ./tools/scripts/Invoke-MacE2E.ps1

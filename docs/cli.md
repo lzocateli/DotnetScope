@@ -101,8 +101,9 @@ chaves são contrato estável: remoções ou renomeações são mudanças incomp
 Instala um SDK ou runtime a partir do arquivo compactado oficial, verificado por
 SHA-512. Nesta versão funciona no escopo `user`: `.tar.gz` no Linux e no macOS e
 `.zip` no Windows. O escopo `global` está disponível no Linux
-([Escopo global](#escopo-global-linux)) e no Windows
-([instalador oficial](#escopo-global-no-windows)); no macOS retorna código `2`.
+([Escopo global](#escopo-global-linux)), no Windows
+([instalador oficial](#escopo-global-no-windows)) e no macOS
+([`.pkg` oficial](#escopo-global-no-macos)).
 
 ```text
 dotnetscope install <componente> <versão> [opções]
@@ -113,8 +114,8 @@ dotnetscope install --from-global-json [caminho] [opções]
 
 | Opção | Padrão | Descrição |
 | --- | --- | --- |
-| `--scope` | `user` | `user` ou `global` (Linux com root e Windows elevado; ver [Escopo global](#escopo-global-linux) e [Windows](#escopo-global-no-windows)). |
-| `--source` | `auto` | Estratégia do escopo global: `auto`, `archive` ou `apt` no Linux (ver [Estratégia apt](#estratégia-apt)); `auto` ou `installer` no Windows (ver [Escopo global no Windows](#escopo-global-no-windows)). Com `--scope user`, `apt` é erro de uso. |
+| `--scope` | `user` | `user` ou `global` (Linux e macOS com root, Windows elevado; ver [Linux](#escopo-global-linux), [Windows](#escopo-global-no-windows) e [macOS](#escopo-global-no-macos)). |
+| `--source` | `auto` | Estratégia do escopo global: `auto`, `archive` ou `apt` no Linux (ver [Estratégia apt](#estratégia-apt)); `auto` ou `installer` no Windows e no macOS (instalador oficial). Com `--scope user`, `apt` é erro de uso. |
 | `--install-deps` | `false` | Escopo global: instala as dependências nativas pelo gerenciador de pacotes antes de resolver a versão. Com `--scope user`, é erro de uso. |
 | `--install-dir` | `~/.dotnet` (Windows: `%LOCALAPPDATA%\Microsoft\dotnet`) | Raiz da instalação; precisa ser absoluta. |
 | `--prerelease` | `false` | Permite versões preview/RC. |
@@ -643,6 +644,37 @@ dotnetscope uninstall runtime 9.0.4 --scope global
 - `uninstall --scope global` remove somente o que o dotnetscope registrou,
   executando o mesmo instalador verificado com `/uninstall`; sem registro,
   retorna código `3`.
+
+## Escopo global no macOS
+
+No macOS, `--scope global` usa somente o instalador oficial `.pkg` da Microsoft
+(decisão da F7d), que instala em `/usr/local/share/dotnet` e configura
+`/etc/paths.d`.
+
+```bash
+sudo dotnetscope install runtime 9.0 --scope global --yes
+```
+
+- Exige root (código `7` sem ele); o dotnetscope não chama `sudo`.
+- `--source archive|apt`, `--archive`, `--install-dir` e `--install-deps` são
+  erro de uso (código `2`), assim como `env` e `doctor` com `--scope global`.
+- O estado global (manifesto, cache e staging) fica em `/var/db/dotnetscope`, que
+  com seus ancestrais precisa pertencer ao root e não aceitar escrita de grupo
+  ou outros (código `7`). O pacote é baixado da allowlist para um staging com
+  modo `0700`, conferido de novo pelo SHA-512 e verificado com `pkgutil
+  --check-signature`: assinatura Developer ID e primeiro certificado exatamente
+  `Developer ID Installer: Microsoft Corporation (UBF8T346G9)`. Caso contrário,
+  código `5` sem executar nada. Só então roda `installer -pkg <arquivo> -target /`,
+  com ambiente fixo.
+- Se `/usr/local/share/dotnet` ou um ancestral pertencer a outro usuário (por
+  exemplo, o Homebrew em Macs Intel), a CLI avisa: o instalador oficial grava
+  nesse local mesmo assim, e um usuário comum poderia alterar o .NET da máquina.
+- Ctrl+C durante o `installer` não o interrompe; após 30 minutos, ele é encerrado.
+- Componente já presente é `alreadyInstalled` e não é registrado;
+  `environment.status` é `package`.
+- O `.pkg` não tem desinstalador (D-F7-4): `uninstall --scope global` de uma
+  instalação registrada retorna código `2` com a orientação de remoção manual ou
+  pela ferramenta `dotnet-core-uninstall`; sem registro, código `3`.
 
 ## Manifesto de instalações
 

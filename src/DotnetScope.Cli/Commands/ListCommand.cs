@@ -102,7 +102,7 @@ internal static class ListCommand
     {
         var rid = services.DetectRid();
         var path = rid.StartsWith("linux-", StringComparison.Ordinal) ? services.CreateGlobalLayout(rid).ManifestFile
-            : rid.StartsWith("win-", StringComparison.Ordinal) ? services.CreateWindowsGlobalLayout().ManifestFile
+            : GlobalScope.UsesOfficialInstaller(rid) ? services.CreateInstallerLayout(rid).ManifestFile
             : null;
         if (path is null)
         {

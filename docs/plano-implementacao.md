@@ -329,7 +329,7 @@ runners efêmeros.
 | F7a | Global Linux por arquivo (D4): elevação, diretórios confiáveis, estado e cache globais, `/etc/profile.d`, `install_location`, `uninstall`/`env`/`list`/`doctor` globais | R03, R05–R09, R13, R14 (parcial), R17, R18 (`archive`) e R20 do [modelo de ameaças](modelo-de-ameacas-f7.md) com testes negativos; E2E Ubuntu 24.04 e Fedora 41 | concluída |
 | F7b | Global Linux por `apt` (`--source auto\|archive\|apt`) e `--install-deps` | R10–R12, R19 | concluída (E2E apt em Ubuntu 24.04) |
 | F7c | Global Windows: instalador `.exe` com Authenticode (sem `archive`, decisão de 2026-10-21) | R01–R04, R16, R17, R18 | implementada; testes nativos e E2E no Windows pendentes (commit local, sem CI) |
-| F7d | Global macOS: `.pkg` com assinatura e `archive` com `/etc/paths.d` | R01–R03, R10, R16 | pendente |
+| F7d | Global macOS: `.pkg` com assinatura (sem `archive`, decisão de 2026-10-21) | R01–R03, R16, R17 | implementada; E2E em `macos-15` pendente |
 | F8 | macOS user | E2E em runner macOS | pendente |
 | F9 | Assinatura, SBOM, Authenticode/`.pkg`, `.deb`/APT, winget, Homebrew | artefatos assinados e verificáveis | pendente |
 
@@ -382,6 +382,15 @@ com milestone, e é entregue por PR com as evidências do template.
     porque o Windows PowerShell 5.1 pode não habilitá-lo por padrão;
   - smoke de `linux-arm64` e `win-arm64` roda em runners Arm64 nativos
     (`ubuntu-24.04-arm`, `windows-11-arm`), sem emulação.
+- Decisões de implementação da F7d:
+  - no macOS, o escopo global usa somente o `.pkg` oficial (decisão do revisor
+    humano em 2026-10-21, como no Windows); a remoção não é automática (D-F7-4);
+  - o estado global fica em `/var/db/dotnetscope` (dono root, sem escrita de
+    outros); a assinatura exige Developer ID com o certificado de instalador da
+    Microsoft (Team ID `UBF8T346G9`);
+  - uma raiz do `.pkg` com ancestral de outro usuário (Homebrew em Macs Intel)
+    gera aviso, não erro, porque o instalador oficial grava nela de qualquer forma;
+  - o `stat` usa a sintaxe BSD no macOS (`-f '%u %Lp'`).
 - Decisões de implementação da F7c:
   - no Windows, o escopo global usa somente o instalador oficial `.exe`; a
     estratégia `archive` em `%ProgramFiles%\dotnet` com `HKLM` foi descartada

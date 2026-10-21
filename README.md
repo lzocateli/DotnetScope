@@ -6,7 +6,7 @@ extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuár
 
 > **Estado:** em desenvolvimento (fase F7). Release atual:
 > [v0.2.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.2.0).
-> Implementado em Linux e Windows (escopos user e global):
+> Implementado em Linux e Windows (escopos user e global) e no macOS (escopo global):
 > `list --available|--installed`,
 > `install` (inclusive `--archive` e `--from-global-json`), `uninstall`, `env` e
 > `doctor` ([referência da CLI](docs/cli.md)). O restante
@@ -36,8 +36,9 @@ Para instalar uma versão específica, use `--version 0.1.0` (`install.sh`) ou
 `-Version 0.1.0` (`install.ps1`). Também é possível baixar o pacote
 `dotnetscope-<rid>.tar.gz`/`.zip` da [página de releases](https://github.com/lzocateli/DotnetScope/releases)
 e conferir a atestação de proveniência com
-`gh attestation verify <arquivo> --repo lzocateli/DotnetScope`. No macOS, os
-comandos de instalação de SDK chegam na fase F8.
+`gh attestation verify <arquivo> --repo lzocateli/DotnetScope`. No macOS, o
+escopo global usa o `.pkg` oficial verificado
+([referência](docs/cli.md#escopo-global-no-macos)); o escopo user chega na fase F8.
 
 Atrás de proxy HTTP, prefira `curl`: o `wget` do BusyBox (Alpine) não usa
 `CONNECT` para HTTPS e costuma ser recusado pelo proxy.
@@ -86,7 +87,6 @@ dotnetscope install runtime 9.0 --scope global --yes   # terminal elevado: insta
 ## Uso planejado
 
 ```bash
-dotnetscope install sdk lts --scope global             # macOS (F7d)
 dotnetscope install sdk lts                            # macOS, escopo user (F8)
 ```
 

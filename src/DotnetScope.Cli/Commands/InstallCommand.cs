@@ -129,25 +129,30 @@ internal static class InstallCommand
         var home = services.HomeDirectory();
         string root;
         GlobalLayout? global = null;
-        WindowsGlobalLayout? windows = null;
-        if (options.Scope == InstallScope.Global && rid.StartsWith("win-", StringComparison.Ordinal))
+        InstallerGlobalLayout? official = null;
+        if (options.Scope == InstallScope.Global && GlobalScope.UsesOfficialInstaller(rid))
         {
-            // D-F7-5 e decisão da F7c: no Windows, somente o instalador oficial, que define a raiz e o ambiente.
+            // Decisões da F7c e da F7d: no Windows e no macOS, somente o instalador oficial, que define a raiz e o ambiente.
             if (options.Source is "archive" or "apt" || options.Archive is not null || options.InstallDir is not null || options.InstallDeps)
             {
                 throw new DotnetScopeException(
                     ExitCodes.Usage,
-                    "No Windows, o escopo global usa somente o instalador oficial (--source auto ou installer), sem --archive, --install-dir nem --install-deps.");
+                    "No Windows e no macOS, o escopo global usa somente o instalador oficial (--source auto ou installer), sem --archive, --install-dir nem --install-deps.");
             }
 
-            windows = GlobalScope.PrepareWindows(services);
-            root = windows.Root;
+            official = GlobalScope.PrepareInstaller(services, rid);
+            root = official.Root;
+            GlobalScope.IgnoreUserCertificates(services, diagnostics);
+            if (!rid.StartsWith("win-", StringComparison.Ordinal))
+            {
+                WarnIfUntrustedInstallerRoot(services, diagnostics, root);
+            }
         }
         else if (options.Scope == InstallScope.Global)
         {
             if (options.Source == "installer")
             {
-                throw new DotnetScopeException(ExitCodes.Usage, "--source installer só se aplica ao escopo global no Windows.");
+                throw new DotnetScopeException(ExitCodes.Usage, "--source installer só se aplica ao escopo global no Windows e no macOS.");
             }
 
             (global, root) = GlobalScope.Prepare(services, rid, options.InstallDir);
@@ -176,7 +181,7 @@ internal static class InstallCommand
         }
 
         var (artifact, requestLabel, needsConfirmation) = await ResolveAsync(
-            services, diagnostics, options, rid, global?.MetadataCacheDirectory ?? windows?.MetadataCacheDirectory, windows is not null, cancellationToken)
+            services, diagnostics, options, rid, global?.MetadataCacheDirectory ?? official?.MetadataCacheDirectory, official is not null, cancellationToken)
             .ConfigureAwait(false);
 
         if (artifact.Channel?.Phase == SupportPhase.Eol)
@@ -221,7 +226,7 @@ internal static class InstallCommand
         var target = options.Scope == InstallScope.User
             ? EnvironmentSetup.CreateTarget(root, home, options.TelemetryOptOut)
             : EnvironmentSetup.CreateGlobalTarget(root, options.TelemetryOptOut);
-        var packageManaged = apt is not null || windows is not null;
+        var packageManaged = apt is not null || official is not null;
         IUserEnvironmentConfigurator? configurator = null;
         EnvironmentPlan? environmentPlan = null;
         if (options.ConfigureEnv && !packageManaged)
@@ -268,7 +273,7 @@ internal static class InstallCommand
             GlobalScope.EnsureTrustedRoot(services, root);
         }
 
-        using var installer = windows is not null ? services.CreateWindowsSetupInstaller(windows, diagnostics, progress)
+        using var installer = official is not null ? services.CreateOfficialInstaller(official, diagnostics, progress)
             : global is null ? services.CreateInstaller(diagnostics, progress)
             : apt is not null ? services.CreateAptInstaller(global, apt, diagnostics)
             : services.CreateGlobalInstaller(global, diagnostics, progress);
@@ -336,6 +341,22 @@ internal static class InstallCommand
                 $"As fontes apt configuradas não oferecem {package} compatível com o pedido (candidato: {candidate?.PackageVersion ?? "nenhum"}). "
                 + "Execute apt-get update ou use --source archive; o dotnetscope não adiciona repositórios.")
             : null;
+    }
+
+    /// <summary>
+    /// macOS: o <c>.pkg</c> oficial instala em <c>/usr/local/share/dotnet</c> mesmo quando um ancestral pertence a outro
+    /// usuário (por exemplo, o Homebrew em Macs Intel). O dotnetscope não pode corrigir isso; avisa do risco (T04).
+    /// </summary>
+    private static void WarnIfUntrustedInstallerRoot(CliServices services, IDiagnosticSink diagnostics, string root)
+    {
+        try
+        {
+            GlobalLocations.EnsureTrusted(root, services.StatPath, "a instalação");
+        }
+        catch (DotnetScopeException exception) when (exception.ExitCode == ExitCodes.Privilege)
+        {
+            diagnostics.Warning($"{exception.Message} O instalador oficial grava nesse local mesmo assim; um usuário comum poderia alterar o .NET da máquina.");
+        }
     }
 
     private static EnvironmentOutcome NotConfigured(EnvironmentTarget target, bool packageManaged, InstallOptions options) =>

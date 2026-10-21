@@ -111,14 +111,6 @@ public sealed class GlobalScopeTests : IDisposable
     }
 
     [Fact]
-    public async Task Install_Global_NoMacOS_AindaNaoDisponivel()
-    {
-        var result = await RunAsync(["install", "sdk", "10.0.402", "--scope", "global"], rid: "osx-arm64");
-
-        Assert.Equal(ExitCodes.Usage, result.ExitCode);
-    }
-
-    [Fact]
     public async Task Install_Global_ConfiguraProfileDEInstallLocation()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Escopo global do Linux.");

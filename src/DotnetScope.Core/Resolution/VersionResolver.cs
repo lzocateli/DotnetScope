@@ -4,7 +4,7 @@ using DotnetScope.Core.Versions;
 namespace DotnetScope.Core.Resolution;
 
 /// <summary>Plataforma alvo e política de prerelease usadas na resolução.</summary>
-/// <param name="Installer">No Windows, resolve o instalador oficial (<c>.exe</c>) em vez do <c>.zip</c> (escopo global).</param>
+/// <param name="Installer">Resolve o instalador oficial (<c>.exe</c> no Windows, <c>.pkg</c> no macOS) em vez do arquivo compactado (escopo global).</param>
 public sealed record ResolveOptions(string Rid, bool AllowPrerelease, bool Installer = false);
 
 /// <summary>Versão candidata de um componente, com o arquivo compactado oficial para o RID quando existir.</summary>
@@ -205,7 +205,7 @@ public sealed class VersionResolver(IReleaseMetadataSource source)
     internal static bool IsWindowsRid(string rid) => rid.StartsWith("win-", StringComparison.OrdinalIgnoreCase);
 
     internal static string ExpectedArchiveName(ComponentKind component, string rid, bool installer = false) =>
-        component.ArchivePrefix() + rid + (!IsWindowsRid(rid) ? ".tar.gz" : installer ? ".exe" : ".zip");
+        component.ArchivePrefix() + rid + (installer ? (IsWindowsRid(rid) ? ".exe" : ".pkg") : IsWindowsRid(rid) ? ".zip" : ".tar.gz");
 
     private static ReleaseChannel SelectChannel(
         VersionSpec spec,

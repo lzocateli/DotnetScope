@@ -13,20 +13,6 @@ using Microsoft.Win32.SafeHandles;
 
 namespace DotnetScope.Infrastructure.SystemScope;
 
-/// <summary>Caminhos do escopo global no Windows: raiz do instalador oficial e estado protegido em ProgramData.</summary>
-public sealed record WindowsGlobalLayout(string Root, string StateDirectory)
-{
-    public string ManifestFile => Path.Combine(StateDirectory, "manifest.json");
-
-    public string MetadataCacheDirectory => Path.Combine(StateDirectory, "cache", "metadata");
-
-    public string StagingDirectory => Path.Combine(StateDirectory, "staging");
-
-    public static WindowsGlobalLayout CreateDefault() => new(
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet"),
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "dotnetscope"));
-}
-
 /// <summary>Elevação e diretórios protegidos do escopo global no Windows (modelo de ameaças, R03 e R17).</summary>
 [SupportedOSPlatform("windows")]
 public static class WindowsSecurity
@@ -245,14 +231,14 @@ public sealed class WindowsSetupInstaller : IArtifactInstaller
     private static readonly TimeSpan SetupTimeout = TimeSpan.FromMinutes(30);
 
     private readonly TrustedHttpFetcher fetcher;
-    private readonly WindowsGlobalLayout layout;
+    private readonly InstallerGlobalLayout layout;
     private readonly InstallationManifestStore manifest;
     private readonly IDiagnosticSink diagnostics;
     private readonly IProgress<DownloadProgress>? progress;
 
     internal WindowsSetupInstaller(
         TrustedHttpFetcher fetcher,
-        WindowsGlobalLayout layout,
+        InstallerGlobalLayout layout,
         InstallationManifestStore manifest,
         IDiagnosticSink diagnostics,
         IProgress<DownloadProgress>? progress)
@@ -264,7 +250,7 @@ public sealed class WindowsSetupInstaller : IArtifactInstaller
         this.progress = progress;
     }
 
-    public static WindowsSetupInstaller CreateOfficial(WindowsGlobalLayout layout, IDiagnosticSink diagnostics, IProgress<DownloadProgress>? progress)
+    public static WindowsSetupInstaller CreateOfficial(InstallerGlobalLayout layout, IDiagnosticSink diagnostics, IProgress<DownloadProgress>? progress)
     {
         ArgumentNullException.ThrowIfNull(layout);
         return new(TrustedHttpFetcher.CreateOfficial(diagnostics), layout, new InstallationManifestStore(layout.ManifestFile), diagnostics, progress);

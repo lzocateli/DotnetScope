@@ -62,23 +62,38 @@ internal sealed record CliServices(
     /// <summary>Processo elevado: root no Linux e macOS, token elevado (UAC) no Windows.</summary>
     public Func<bool> IsElevated { get; init; } = () => OperatingSystem.IsWindows() ? WindowsSecurity.IsElevated() : UnixUser.IsRoot();
 
-    public Func<WindowsGlobalLayout> CreateWindowsGlobalLayout { get; init; } = WindowsGlobalLayout.CreateDefault;
+    /// <summary>Raiz e estado do escopo global pelo instalador oficial (Windows e macOS) para o RID.</summary>
+    public Func<string, InstallerGlobalLayout> CreateInstallerLayout { get; init; } = InstallerGlobalLayout.CreateDefault;
 
-    /// <summary>Cria ou valida o estado global protegido do Windows (ACL só de Administradores e SYSTEM).</summary>
+    /// <summary>
+    /// Cria ou valida o estado global protegido: ACL só de Administradores e SYSTEM no Windows; dono root e sem escrita
+    /// de grupo ou outros, inclusive nos ancestrais, no macOS.
+    /// </summary>
     public Action<string> EnsureProtectedDirectory { get; init; } = path =>
     {
         if (OperatingSystem.IsWindows())
         {
             WindowsSecurity.EnsureProtectedDirectory(path);
+            return;
         }
+
+        var parent = Path.GetDirectoryName(path);
+        if (parent is not null)
+        {
+            GlobalLocations.EnsureTrusted(parent, UnixFileOwnership.Stat, "o estado do dotnetscope");
+        }
+
+        GlobalLocations.CreateDirectory(path);
+        GlobalLocations.EnsureTrusted(path, UnixFileOwnership.Stat, "o estado do dotnetscope");
     };
 
-    public Func<WindowsGlobalLayout, IDiagnosticSink, IProgress<DownloadProgress>?, IArtifactInstaller> CreateWindowsSetupInstaller { get; init; } =
-        (layout, diagnostics, progress) => OperatingSystem.IsWindows()
-            ? WindowsSetupInstaller.CreateOfficial(layout, diagnostics, progress)
-            : throw new PlatformNotSupportedException("O instalador oficial só executa no Windows.");
+    /// <summary>Instalador oficial verificado: <c>.exe</c> no Windows, <c>.pkg</c> no macOS.</summary>
+    public Func<InstallerGlobalLayout, IDiagnosticSink, IProgress<DownloadProgress>?, IArtifactInstaller> CreateOfficialInstaller { get; init; } =
+        (layout, diagnostics, progress) => OperatingSystem.IsWindows() ? WindowsSetupInstaller.CreateOfficial(layout, diagnostics, progress)
+            : OperatingSystem.IsMacOS() ? MacPkgInstaller.CreateOfficial(layout, new SystemCommandRunner(), diagnostics, progress)
+            : throw new PlatformNotSupportedException("O instalador oficial só executa no Windows e no macOS.");
 
-    public Func<WindowsGlobalLayout, InstallationRecord, IDiagnosticSink, CancellationToken, Task> UninstallWindowsSetup { get; init; } =
+    public Func<InstallerGlobalLayout, InstallationRecord, IDiagnosticSink, CancellationToken, Task> UninstallWindowsSetup { get; init; } =
         async (layout, record, diagnostics, cancellationToken) =>
         {
             if (!OperatingSystem.IsWindows())

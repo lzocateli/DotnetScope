@@ -56,7 +56,7 @@ public sealed class SystemCommandRunner : ISystemCommandRunner
         startInfo.Environment["LANG"] = "C";
         startInfo.Environment["LC_ALL"] = "C";
         startInfo.Environment["DEBIAN_FRONTEND"] = "noninteractive";
-        startInfo.Environment["HOME"] = "/root";
+        startInfo.Environment["HOME"] = OperatingSystem.IsMacOS() ? "/var/root" : "/root";
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
