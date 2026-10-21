@@ -169,8 +169,8 @@ try {
     # 4. Idempotencia, runtime, inventario e doctor.
     $again = (Invoke-Scope @('install', 'sdk', $sdkVersion, '--yes', '--output', 'json')).Output | ConvertFrom-Json
     if ($again.status -ne 'alreadyInstalled' -or $again.environment.status -ne 'unchanged') { Fail "reinstalacao: $($again.status)/$($again.environment.status)" }
-    $runtime = (Invoke-Scope @('install', 'runtime', $Runtime, '--yes', '--output', 'json')).Output | ConvertFrom-Json
-    $runtimeVersion = $runtime.version
+    $runtimeJson = (Invoke-Scope @('install', 'runtime', $Runtime, '--yes', '--output', 'json')).Output | ConvertFrom-Json
+    $runtimeVersion = $runtimeJson.version
     $inventory = (Invoke-Scope @('list', '--installed', '--output', 'json')).Output | ConvertFrom-Json
     $own = @($inventory.installations | Where-Object { $_.origin -eq 'dotnetscope' } | ForEach-Object { "$($_.component) $($_.version)" })
     foreach ($expected in "sdk $sdkVersion", "runtime $runtimeVersion") {
