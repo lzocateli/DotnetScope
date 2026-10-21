@@ -58,6 +58,24 @@ $ErrorActionPreference = 'Stop'
 $script:RunAsFile = -not [string]::IsNullOrEmpty($PSCommandPath)
 $repositoryUrl = 'https://github.com/lzocateli/DotnetScope/releases'
 
+# Antivirus pode manter o arquivo recem-gravado aberto por alguns instantes.
+function Move-FileWithRetry {
+    param([string] $Source, [string] $Destination)
+
+    for ($attempt = 1; ; $attempt++) {
+        try {
+            [IO.File]::Move($Source, $Destination)
+            return
+        }
+        catch [IO.IOException], [UnauthorizedAccessException] {
+            if ($attempt -ge 10) {
+                throw
+            }
+            Start-Sleep -Milliseconds 300
+        }
+    }
+}
+
 function Exit-Install {
     param([int] $Code, [string] $Message)
 
@@ -207,13 +225,28 @@ try {
         Exit-Install 1 "o binario baixado nao executa nesta plataforma ($rid); nada foi substituido"
     }
 
-    if (Test-Path -LiteralPath $target -PathType Leaf) {
-        [IO.File]::Replace($stagedBinary, $target, $null)
+    # Renomear funciona mesmo com o executavel atual em uso; o backup restaura a versao
+    # anterior se a troca falhar e e removido em seguida (ou na proxima instalacao).
+    Get-ChildItem -LiteralPath $InstallDir -Filter '.dotnetscope.old.*.exe' -Force -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    $backup = $null
+    try {
+        if (Test-Path -LiteralPath $target -PathType Leaf) {
+            $backup = Join-Path $InstallDir ".dotnetscope.old.$PID.exe"
+            Move-FileWithRetry -Source $target -Destination $backup
+        }
+        Move-FileWithRetry -Source $stagedBinary -Destination $target
     }
-    else {
-        [IO.File]::Move($stagedBinary, $target)
+    catch {
+        if ($null -ne $backup -and -not (Test-Path -LiteralPath $target) -and (Test-Path -LiteralPath $backup)) {
+            [IO.File]::Move($backup, $target)
+        }
+        Exit-Install 1 "falha ao instalar em ${target}: $($_.Exception.Message)"
     }
     $stagedBinary = $null
+    if ($null -ne $backup) {
+        Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+    }
 
     Write-Output "dotnetscope $installedVersion instalado em $target"
 

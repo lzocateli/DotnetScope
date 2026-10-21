@@ -235,6 +235,20 @@ try {
                 return [pscustomobject]@{ Code = $LASTEXITCODE; Output = $output }
             }
 
+            function Test-Runs {
+                param([string] $Path)
+                if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+                    return $false
+                }
+                try {
+                    $null = & $Path --version
+                    return $LASTEXITCODE -eq 0
+                }
+                catch {
+                    return $false
+                }
+            }
+
             function Assert-Case {
                 param([string] $Name, [bool] $Condition, [object] $Result)
                 if ($Condition) {
@@ -268,18 +282,14 @@ try {
             $binDir = Join-Path $scratch 'bin'
             $result = Invoke-Installer @('-BaseUrl', $baseUrl, '-InstallDir', $binDir)
             $installed = Join-Path $binDir 'dotnetscope.exe'
-            $runs = $false
-            if (Test-Path -LiteralPath $installed -PathType Leaf) {
-                $null = & $installed --version
-                $runs = $LASTEXITCODE -eq 0
-            }
+            $runs = Test-Runs -Path $installed
             Assert-Case -Name 'instalacao em diretorio explicito' -Condition ($result.Code -eq 0 -and $runs -and $result.Output -match 'nao esta no PATH') -Result $result
 
             Set-Content -LiteralPath $installed -Value 'versao anterior'
             $result = Invoke-Installer @('-BaseUrl', $baseUrl, '-InstallDir', $binDir)
-            $null = & $installed --version
+            $runs = Test-Runs -Path $installed
             $entries = @(Get-ChildItem -LiteralPath $binDir -Force | ForEach-Object Name)
-            Assert-Case -Name 'reinstalacao sem residuos' -Condition ($result.Code -eq 0 -and $LASTEXITCODE -eq 0 -and $entries.Count -eq 1) -Result $result
+            Assert-Case -Name 'reinstalacao sem residuos' -Condition ($result.Code -eq 0 -and $runs -and $entries.Count -eq 1) -Result $result
 
             $savedLocalAppData = $env:LOCALAPPDATA
             try {
