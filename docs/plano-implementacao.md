@@ -328,8 +328,8 @@ runners efêmeros.
 | F6 | Windows user (zip + registro + `WM_SETTINGCHANGE`) | `dotnet` disponível em novo terminal; reversão do registro | concluída (testes nativos e E2E em `windows-2025`; [referência](cli.md#windows)) |
 | F7a | Global Linux por arquivo (D4): elevação, diretórios confiáveis, estado e cache globais, `/etc/profile.d`, `install_location`, `uninstall`/`env`/`list`/`doctor` globais | R03, R05–R09, R13, R14 (parcial), R17, R18 (`archive`) e R20 do [modelo de ameaças](modelo-de-ameacas-f7.md) com testes negativos; E2E Ubuntu 24.04 e Fedora 41 | concluída |
 | F7b | Global Linux por `apt` (`--source auto\|archive\|apt`) e `--install-deps` | R10–R12, R19 | concluída (E2E apt em Ubuntu 24.04) |
-| F7c | Global Windows: instalador `.exe` com Authenticode (sem `archive`, decisão de 2026-10-21) | R01–R04, R16, R17, R18 | implementada; testes nativos e E2E no Windows pendentes (commit local, sem CI) |
-| F7d | Global macOS: `.pkg` com assinatura (sem `archive`, decisão de 2026-10-21) | R01–R03, R16, R17 | implementada; E2E em `macos-15` pendente |
+| F7c | Global Windows: instalador `.exe` com Authenticode (sem `archive`, decisão de 2026-10-21) | R01–R04, R16, R17, R18 | concluída (testes nativos e E2E global em `windows-2025`) |
+| F7d | Global macOS: `.pkg` com assinatura (sem `archive`, decisão de 2026-10-21) | R01–R03, R16, R17 | concluída (E2E global em `macos-15`, com raiz confiável e não confiável) |
 | F8 | macOS user | E2E em runner macOS | pendente |
 | F9 | Assinatura, SBOM, Authenticode/`.pkg`, `.deb`/APT, winget, Homebrew | artefatos assinados e verificáveis | pendente |
 
