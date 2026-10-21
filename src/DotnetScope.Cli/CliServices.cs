@@ -4,6 +4,7 @@ using DotnetScope.Core.Releases;
 using DotnetScope.Infrastructure.Installation;
 using DotnetScope.Infrastructure.Metadata;
 using DotnetScope.Infrastructure.Platform;
+using DotnetScope.Infrastructure.SystemScope;
 using DotnetScope.Infrastructure.UserEnvironment;
 
 namespace DotnetScope.Cli;
@@ -19,6 +20,10 @@ internal sealed record CliServices(
         ArchiveInstaller.CreateOfficial;
 
     public Func<bool> IsRoot { get; init; } = UnixUser.IsRoot;
+
+    public Func<string, string?> GetEnvironmentVariable { get; init; } = Environment.GetEnvironmentVariable;
+
+    public Action<string> UnsetEnvironmentVariable { get; init; } = UnixUser.UnsetEnvironmentVariable;
 
     public Func<string> HomeDirectory { get; init; } = () => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
@@ -42,6 +47,17 @@ internal sealed record CliServices(
     public Func<string?> LoginShell { get; init; } = LoginShellProbe.DefaultShell;
 
     public Func<string?, string, CancellationToken, Task<LoginShellResult?>> ProbeLoginShell { get; init; } = LoginShellProbe.ProbeAsync;
+
+    /// <summary>Caminhos fixos do escopo global para o RID (substituídos por diretórios temporários nos testes).</summary>
+    public Func<string, GlobalLayout> CreateGlobalLayout { get; init; } = GlobalLayout.CreateDefault;
+
+    /// <summary>Dono e permissões de um caminho, usados para validar diretórios do escopo global.</summary>
+    public Func<string, UnixFileStatus?> StatPath { get; init; } = UnixFileOwnership.Stat;
+
+    public Func<GlobalLayout, IDiagnosticSink, IProgress<DownloadProgress>?, IArtifactInstaller> CreateGlobalInstaller { get; init; } =
+        (layout, diagnostics, progress) => ArchiveInstaller.CreateOfficial(new InstallationManifestStore(layout.ManifestFile), diagnostics, progress);
+
+    public SystemEnvironmentConfigurator CreateSystemEnvironment(GlobalLayout layout) => new(layout, StatPath);
 
     /// <summary>Indica se o RID alvo é Windows (registro, zip e <c>dotnet.exe</c>).</summary>
     public bool IsWindowsTarget => DetectRid().StartsWith("win-", StringComparison.Ordinal);

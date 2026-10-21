@@ -27,8 +27,16 @@ internal sealed record VariableBackup(string Location, List<VariableBackupEntry>
 
 internal sealed record VariableBackupEntry(string Name, string? Value, bool Expandable);
 
+/// <summary>Estado do escopo global: raiz configurada e, por arquivo de sistema, o que foi gravado e o que existia antes.</summary>
+internal sealed record SystemEnvironmentState(int SchemaVersion, string? DotnetRoot, List<SystemFileState> Files);
+
+/// <param name="Written">Conteúdo gravado pelo DotnetScope.</param>
+/// <param name="Previous">Conteúdo anterior ao DotnetScope, ou nulo se o arquivo não existia.</param>
+internal sealed record SystemFileState(string Path, string Written, string? Previous);
+
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true)]
 [JsonSerializable(typeof(EnvironmentState))]
+[JsonSerializable(typeof(SystemEnvironmentState))]
 [JsonSerializable(typeof(WindowsEnvironmentState))]
 [JsonSerializable(typeof(VariableBackup))]
 internal sealed partial class EnvironmentJsonContext : JsonSerializerContext;

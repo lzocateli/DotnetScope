@@ -23,7 +23,7 @@ public sealed class InstallCommandTests
     [InlineData(ExitCodes.Usage, "install", "dotnet", "10.0.402")]
     [InlineData(ExitCodes.Usage, "install", "sdk", "latest")]
     [InlineData(ExitCodes.Usage, "install", "runtime", "10.0.4xx")]
-    [InlineData(ExitCodes.Usage, "install", "sdk", "10.0.402", "--scope", "global")]
+    [InlineData(ExitCodes.Privilege, "install", "sdk", "10.0.402", "--scope", "global")]
     [InlineData(ExitCodes.Usage, "install", "sdk", "10.0.402", "--scope", "system")]
     [InlineData(ExitCodes.Usage, "install", "sdk", "11.0.100-rc.2.26504.105")]
     [InlineData(ExitCodes.Usage, "install", "sdk", "10.0.402", "--install-dir", "relativo/dotnet")]

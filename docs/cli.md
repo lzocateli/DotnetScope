@@ -100,7 +100,8 @@ chaves são contrato estável: remoções ou renomeações são mudanças incomp
 
 Instala um SDK ou runtime a partir do arquivo compactado oficial, verificado por
 SHA-512. Nesta versão funciona no escopo `user`: `.tar.gz` no Linux e no macOS e
-`.zip` no Windows. O escopo `global` retorna erro.
+`.zip` no Windows. O escopo `global` está disponível no Linux
+([Escopo global](#escopo-global-linux)); no Windows e no macOS retorna código `2`.
 
 ```text
 dotnetscope install <componente> <versão> [opções]
@@ -111,7 +112,7 @@ dotnetscope install --from-global-json [caminho] [opções]
 
 | Opção | Padrão | Descrição |
 | --- | --- | --- |
-| `--scope` | `user` | `user`; `global` ainda não está disponível (código `2`). |
+| `--scope` | `user` | `user` ou `global` (somente Linux nesta versão; exige root, ver [Escopo global](#escopo-global-linux)). |
 | `--install-dir` | `~/.dotnet` (Windows: `%LOCALAPPDATA%\Microsoft\dotnet`) | Raiz da instalação; precisa ser absoluta. |
 | `--prerelease` | `false` | Permite versões preview/RC. |
 | `--offline` | `false` | Resolve a versão somente com o metadata em cache (o download continua exigindo rede). |
@@ -249,9 +250,10 @@ o mesmo fluxo por padrão (`--configure-env true`).
 
 ```text
 dotnetscope env show   [--shell posix|sh|bash|zsh|fish|pwsh|powershell|cmd] [--install-dir <dir>] [--telemetry-optout]
+                       [--scope user|global]
 dotnetscope env apply  [--install-dir <dir>] [--env-conflict fail|override|skip] [--telemetry-optout]
                        [-y|--yes] [--dry-run] [--output text|json]
-dotnetscope env remove [--dry-run] [--output text|json]
+dotnetscope env remove [--dry-run] [--output text|json] [--scope user|global]
 ```
 
 - `env show` só imprime o script, sem gravar nada. É útil para a sessão atual:
@@ -433,7 +435,7 @@ use `dotnetscope doctor`. É uma operação somente leitura.
 ## `uninstall`
 
 ```text
-dotnetscope uninstall <componente> <versão> [--install-dir <dir>] [--force] [--keep-env]
+dotnetscope uninstall <componente> <versão> [--scope user|global] [--install-dir <dir>] [--force] [--keep-env]
                       [--dry-run] [--allow-root] [--output text|json]
 dotnetscope uninstall <COMPONENTE-versão> [opções]
 ```
@@ -471,7 +473,7 @@ remoção segue estas regras:
 ## `doctor`
 
 ```text
-dotnetscope doctor [--repair] [--install-dir <dir>] [--output text|json]
+dotnetscope doctor [--repair] [--scope user|global] [--install-dir <dir>] [--output text|json]
 ```
 
 Verifica a raiz do usuário e as raízes do manifesto, cada uma sob o seu lock.
@@ -501,6 +503,59 @@ O código de saída é `0` quando não restam erros (ou todos foram corrigidos) 
 ```json
 { "healthy": false, "findings": [ { "code": "stale-record", "severity": "error", "message": "...", "repairable": true, "repaired": false } ] }
 ```
+
+## Escopo global (Linux)
+
+`--scope global` instala para todos os usuários da máquina. Os requisitos vêm do
+[modelo de ameaças da F7](modelo-de-ameacas-f7.md); nesta versão a estratégia é
+somente `archive` (o `apt` e o Windows e macOS chegam nas próximas etapas da F7).
+
+```bash
+sudo dotnetscope install sdk lts --scope global --yes
+sudo dotnetscope uninstall sdk 10.0.402 --scope global
+dotnetscope env show --scope global      # não exige root
+sudo dotnetscope doctor --scope global --repair
+```
+
+| Item | Caminho |
+| --- | --- |
+| Raiz padrão | `/usr/local/share/dotnet` (`--install-dir` para outra) |
+| Ambiente de todos os shells de login | `/etc/profile.d/dotnetscope.sh`: `DOTNET_ROOT` e a raiz no início do `PATH`, com guarda contra duplicação |
+| Localização do runtime para o host .NET | `/etc/dotnet/install_location_<arch>` |
+| Manifesto, estado do ambiente, backups e lock | `/var/lib/dotnetscope` (dono root, arquivos `0600`) |
+| Cache de metadata | `/var/cache/dotnetscope/metadata` |
+
+Garantias:
+
+- Exige root (código `7` sem ele). O dotnetscope nunca chama `sudo`.
+- Os caminhos acima são fixos: `HOME` e `XDG_*` herdados de quem elevou não são
+  usados, e o cache do usuário nunca é lido.
+- A raiz e todos os seus ancestrais, antes e depois de resolver links, precisam
+  pertencer ao root e não aceitar escrita de grupo ou outros (código `7`). A
+  mesma regra vale para `/var/lib/dotnetscope`, `/var/cache/dotnetscope`,
+  `/etc/profile.d` e `/etc/dotnet`. A raiz nova nasce com modo `0755`,
+  independentemente do `umask`.
+- `--install-dir` recusa diretórios do sistema (`/`, `/usr`, `/opt`, `/etc`,
+  `/proc` etc., código `7`) e as raízes dos pacotes da distribuição
+  (`/usr/lib/dotnet`, `/usr/share/dotnet`, `/usr/lib64/dotnet`, código `6`).
+- São conflito (política `--env-conflict`, padrão código `6` sem alterar nada,
+  antes do download): `DOTNET_ROOT` com outro valor em `/etc/environment`,
+  `/etc/profile` ou `/etc/profile.d/*.sh`; `install_location` de terceiro com
+  outra raiz; e `/usr/bin/dotnet` ou `/usr/local/bin/dotnet` apontando para
+  outra raiz (por exemplo, o pacote `dotnet-sdk-*` da distribuição).
+- `/etc/profile.d/dotnetscope.sh` e `install_location` são gravados de forma
+  atômica, com dono root e modo `0644`, após backup em
+  `/var/lib/dotnetscope/backups`. Se algum deles for link simbólico, nada é
+  gravado (código `6`).
+- `env remove --scope global` e o `uninstall` da última instalação gerenciada
+  restauram o conteúdo anterior exato desses arquivos; um arquivo alterado por
+  terceiros depois disso não é tocado. O diretório `/etc/dotnet`, se criado,
+  permanece vazio.
+- O manifesto global é privado do root: `list --installed` executado por outro
+  usuário mostra as instalações globais com origem `external`.
+- `--prerelease`, `--archive`, `--from-global-json`, `--dry-run` e `--offline`
+  funcionam como no escopo user. O diretório de ferramentas (`~/.dotnet/tools`)
+  não entra no `PATH` global.
 
 ## Manifesto de instalações
 

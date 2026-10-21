@@ -20,11 +20,12 @@ internal static class UninstallCommand
         var keepEnv = new Option<bool>("--keep-env") { Description = "Mantém DOTNET_ROOT/PATH nos perfis mesmo sem instalações gerenciadas" };
         var dryRun = new Option<bool>("--dry-run") { Description = "Mostra o que seria removido sem alterar nada" };
         var allowRoot = new Option<bool>("--allow-root") { Description = "Permite o escopo user executando como root" };
+        var scope = EnvCommand.ScopeOption();
         var output = new Option<string>("--output") { Description = "Formato de saída: text ou json", DefaultValueFactory = _ => "text" };
         output.AcceptOnlyFromAmong("text", "json");
         var command = new Command("uninstall", "Remove um SDK ou runtime instalado pelo dotnetscope, preservando o que outras instalações usam")
         {
-            component, version, installDir, force, keepEnv, dryRun, allowRoot, output,
+            component, version, scope, installDir, force, keepEnv, dryRun, allowRoot, output,
         };
 
         command.SetAction((parseResult, cancellationToken) => CliApplication.ExecuteAsync(
@@ -32,15 +33,32 @@ internal static class UninstallCommand
             parseResult.GetValue(CliApplication.VerboseOption),
             async (diagnostics, ct) =>
             {
-                if (services.IsRoot() && !parseResult.GetValue(allowRoot))
-                {
-                    throw new DotnetScopeException(ExitCodes.Privilege, "O escopo user não deve ser executado como root; use --allow-root.");
-                }
-
                 var request = ParseExact(parseResult.GetValue(component)!, parseResult.GetValue(version));
                 var home = services.HomeDirectory();
-                var root = InstallLocations.ValidateUserRoot(parseResult.GetValue(installDir) ?? InstallLocations.DefaultUserRoot(home), home);
-                var manifest = services.CreateManifestStore();
+                string root;
+                InstallationManifestStore manifest;
+                IUserEnvironmentConfigurator configurator;
+                if (parseResult.GetValue(scope) == "global")
+                {
+                    var (layout, globalRoot) = GlobalScope.Prepare(services, services.DetectRid(), parseResult.GetValue(installDir));
+                    GlobalScope.EnsureTrustedRoot(services, globalRoot);
+                    GlobalScope.EnsureTrustedState(services, layout);
+                    root = globalRoot;
+                    manifest = new InstallationManifestStore(layout.ManifestFile);
+                    configurator = services.CreateSystemEnvironment(layout);
+                }
+                else
+                {
+                    if (services.IsRoot() && !parseResult.GetValue(allowRoot))
+                    {
+                        throw new DotnetScopeException(ExitCodes.Privilege, "O escopo user não deve ser executado como root; use --allow-root.");
+                    }
+
+                    root = InstallLocations.ValidateUserRoot(parseResult.GetValue(installDir) ?? InstallLocations.DefaultUserRoot(home), home);
+                    manifest = services.CreateManifestStore();
+                    configurator = services.CreateEnvironmentConfigurator(home);
+                }
+
                 var dry = parseResult.GetValue(dryRun);
                 var plan = await new ArchiveUninstaller(manifest, diagnostics)
                     .UninstallAsync(root, request.Component, request.Version, parseResult.GetValue(force), dry, ct)
@@ -50,7 +68,6 @@ internal static class UninstallCommand
                 if (!dry && !parseResult.GetValue(keepEnv) && !manifest.Read().Any(r => InstallLocations.SameRoot(r.Root, root)))
                 {
                     // Seção 4.3, regra 10: sem instalações gerenciadas na raiz, o bloco de ambiente que aponta para ela sai.
-                    var configurator = services.CreateEnvironmentConfigurator(home);
                     if (configurator.ConfiguredRoot() is { } configured && InstallLocations.SameRoot(configured, root))
                     {
                         await configurator.ExecuteAsync(configurator.PlanRemove(), diagnostics, ct).ConfigureAwait(false);

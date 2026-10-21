@@ -29,6 +29,31 @@ public static class EnvironmentScripts
         return string.Join('\n', lines) + "\n";
     }
 
+    /// <summary>
+    /// Script de <c>/etc/profile.d</c> do escopo global: <c>DOTNET_ROOT</c> e somente a raiz no PATH (as ferramentas
+    /// globais do .NET ficam no home de cada usuário), com guarda contra duplicação.
+    /// </summary>
+    public static string RenderSystemProfile(string dotnetRoot, bool telemetryOptOut)
+    {
+        ArgumentNullException.ThrowIfNull(dotnetRoot);
+        var quoted = ShellQuoting.Posix(dotnetRoot);
+        var lines = new List<string>
+        {
+            "# Gerado por dotnetscope (escopo global); não edite. Use `dotnetscope env apply|remove --scope global`.",
+            $"export DOTNET_ROOT={quoted}",
+            "case \":${PATH}:\" in",
+            $"  *:{quoted}:*) ;;",
+            $"  *) export PATH={quoted}:\"${{PATH}}\" ;;",
+            "esac",
+        };
+        if (telemetryOptOut)
+        {
+            lines.Add("export DOTNET_CLI_TELEMETRY_OPTOUT=1");
+        }
+
+        return string.Join('\n', lines) + "\n";
+    }
+
     /// <summary>Script do fish (conf.d), idempotente.</summary>
     public static string RenderFish(EnvironmentTarget target)
     {

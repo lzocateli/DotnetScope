@@ -252,6 +252,15 @@ Severidade residual: depois das mitigações. Escala: crítica, alta, média e b
 
 Cada requisito vira tarefa da F7 e tem ao menos um teste negativo.
 
+Estado de implementação (o plano divide a F7 em F7a a F7d):
+
+| Etapa | Requisitos |
+| --- | --- |
+| F7a (Linux, `archive`) | R03 e R18 para `archive`; R05, R06, R07, R08, R09, R13, R17 e R20; R10 parcial (raízes de pacote e `dotnet` concorrente no `PATH` do sistema); R14 parcial (data, origem, hash e escopo, sem o usuário que elevou) |
+| F7b (`apt`) | R10, R11, R12 e R19 |
+| F7c (Windows) | R01 a R04, R16 e R18 para `.exe` |
+| F7d (macOS) | R01 a R03 e R16 para `.pkg` |
+
 | ID | Requisito | Ameaças | Verificação |
 | --- | --- | --- | --- |
 | R01 | Manter a allowlist HTTPS, recusar redirects para fora dela e conferir o SHA-512 do metadata antes de extrair ou executar qualquer artefato global. | T01 | Testes existentes, estendidos a `.exe` e `.pkg`: hash divergente retorna código `5` sem executar nada. |

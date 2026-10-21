@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Executa o cenario E2E de instalacao no escopo user com o binario Native AOT em containers limpos.
+Executa os cenarios E2E de instalacao (escopos user e global) com o binario Native AOT em containers limpos.
 
 .DESCRIPTION
 Para cada imagem, inicia um container descartavel sem .NET, monta o binario
@@ -9,6 +9,11 @@ tests/e2e/install-user.sh: instala dependencias nativas como root, confirma a
 recusa do escopo user como root (codigo 7) e, como usuario comum, instala o SDK
 real, cria e executa uma aplicacao de console, repete a instalacao
 (idempotencia) e instala um runtime lado a lado.
+
+O cenario global (tests/e2e/install-global.sh) roda em outro container limpo,
+como root: recusas sem root e com raiz insegura, conflito de install_location,
+instalacao em /usr/local/share/dotnet, shell de login de usuario comum,
+inventario, doctor e reversao completa de /etc.
 
 Baixa os artefatos oficiais (centenas de MiB por imagem). Variaveis de proxy do
 host sao repassadas ao container pelo engine. O host nao e alterado.
@@ -22,6 +27,9 @@ Especificacao do SDK. Padrao: lts.
 
 .PARAMETER Runtime
 Especificacao do runtime instalado lado a lado. Padrao: 9.0.
+
+.PARAMETER Scenario
+user, global ou all. Padrao: all.
 
 .PARAMETER Engine
 docker ou podman. Padrao: DOTNETSCOPE_CONTAINER_ENGINE, depois Docker e Podman.
@@ -51,6 +59,9 @@ param(
 
     [string] $Runtime = '9.0',
 
+    [ValidateSet('user', 'global', 'all')]
+    [string] $Scenario = 'all',
+
     [ValidateSet('docker', 'podman')]
     [string] $Engine,
 
@@ -72,7 +83,11 @@ if ($RemainingArguments.Count -gt 0) {
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $binary = Join-Path $repositoryRoot 'artifacts/aot/linux-x64/dotnetscope'
-$scenario = Join-Path $repositoryRoot 'tests/e2e/install-user.sh'
+$scenarios = switch ($Scenario) {
+    'user' { @('install-user.sh') }
+    'global' { @('install-global.sh') }
+    default { @('install-user.sh', 'install-global.sh') }
+}
 if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
     [Console]::Error.WriteLine("Binario nao encontrado: $binary. Execute Invoke-Validation.ps1 -Aot. Use --help.")
     exit 2
@@ -102,15 +117,18 @@ if ($containerEngine -eq 'podman') {
 
 $failures = @()
 foreach ($name in $Image) {
-    Write-Output "`n##### E2E em $name"
-    & $containerEngine run --rm `
-        --volume "${binary}:/usr/local/bin/dotnetscope:ro" `
-        --volume "${scenario}:/e2e/install-user.sh:ro" `
-        --env "E2E_SDK=$Sdk" `
-        --env "E2E_RUNTIME=$Runtime" `
-        $name sh /e2e/install-user.sh
-    if ($LASTEXITCODE -ne 0) {
-        $failures += "$name (codigo $LASTEXITCODE)"
+    foreach ($script in $scenarios) {
+        Write-Output "`n##### E2E $script em $name"
+        $scenarioPath = Join-Path $repositoryRoot "tests/e2e/$script"
+        & $containerEngine run --rm `
+            --volume "${binary}:/usr/local/bin/dotnetscope:ro" `
+            --volume "${scenarioPath}:/e2e/${script}:ro" `
+            --env "E2E_SDK=$Sdk" `
+            --env "E2E_RUNTIME=$Runtime" `
+            $name sh "/e2e/$script"
+        if ($LASTEXITCODE -ne 0) {
+            $failures += "$script em $name (codigo $LASTEXITCODE)"
+        }
     }
 }
 

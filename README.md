@@ -6,7 +6,8 @@ extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuár
 
 > **Estado:** em desenvolvimento (fase F7). Release atual:
 > [v0.1.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.1.0).
-> Implementado em Linux e Windows, escopo user: `list --available|--installed`,
+> Implementado em Linux e Windows (escopo user) e no Linux (escopo global):
+> `list --available|--installed`,
 > `install` (inclusive `--archive` e `--from-global-json`), `uninstall`, `env` e
 > `doctor` ([referência da CLI](docs/cli.md)). O restante
 > descrito abaixo é planejado; consulte o
@@ -62,6 +63,15 @@ dotnetscope uninstall sdk 10.0.402                # preserva o que outras instal
 dotnetscope doctor --repair                       # recupera operações interrompidas
 ```
 
+No Linux, `--scope global` instala em `/usr/local/share/dotnet` para todos os
+usuários, com `/etc/profile.d/dotnetscope.sh` e `/etc/dotnet/install_location_<arch>`
+([referência](docs/cli.md#escopo-global-linux)):
+
+```bash
+sudo dotnetscope install sdk lts --scope global --yes
+sudo dotnetscope uninstall sdk 10.0.402 --scope global   # restaura /etc
+```
+
 No Windows, a raiz padrão é `%LOCALAPPDATA%\Microsoft\dotnet` e o ambiente vai
 para as variáveis do usuário (`HKCU\Environment`), valendo em terminais novos:
 
@@ -74,7 +84,8 @@ dotnetscope env remove                            # restaura os valores anterior
 ## Uso planejado
 
 ```bash
-dotnetscope install runtime 10.0 --scope global        # requer terminal elevado (F7)
+dotnetscope install runtime 10.0 --scope global --source apt   # apt (F7b)
+dotnetscope install sdk lts --scope global             # Windows e macOS, terminal elevado (F7c e F7d)
 dotnetscope install sdk lts                            # macOS, escopo user (F8)
 ```
 

@@ -18,7 +18,8 @@ public sealed record ProfileChange(
     bool Delete = false);
 
 /// <summary>Arquivo próprio do DotnetScope a gravar (conteúdo) ou remover (nulo).</summary>
-public sealed record OwnedFileChange(string Path, string? Content);
+/// <param name="Original">Conteúdo no momento do plano (nulo se ausente), conferido antes de gravar quando informado.</param>
+public sealed record OwnedFileChange(string Path, string? Content, string? Original = null, bool CheckOriginal = false);
 
 /// <summary>Alteração planejada em uma variável de ambiente persistente (registro do usuário no Windows).</summary>
 /// <param name="Display">Localização legível, por exemplo <c>HKCU\Environment\Path</c>.</param>

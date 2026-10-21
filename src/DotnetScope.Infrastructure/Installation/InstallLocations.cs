@@ -184,7 +184,7 @@ public static class InstallLocations
         || path.StartsWith(prefix + "/", StringComparison.Ordinal);
 
     /// <summary>Resolve links simbólicos componente a componente até o ancestral existente mais profundo.</summary>
-    private static string ResolveLinks(string path)
+    internal static string ResolveLinks(string path)
     {
         var current = "/";
         foreach (var segment in path.Split('/', StringSplitOptions.RemoveEmptyEntries))

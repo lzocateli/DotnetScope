@@ -4,6 +4,7 @@ using DotnetScope.Cli.Output;
 using DotnetScope.Core;
 using DotnetScope.Core.UserEnvironment;
 using DotnetScope.Infrastructure.Installation;
+using DotnetScope.Infrastructure.SystemScope;
 using DotnetScope.Infrastructure.UserEnvironment;
 
 namespace DotnetScope.Cli.Commands;
@@ -16,9 +17,10 @@ internal static class DoctorCommand
         var installDir = new Option<string?>("--install-dir") { Description = "Raiz adicional a verificar", HelpName = "diretório" };
         var output = new Option<string>("--output") { Description = "Formato de saída: text ou json", DefaultValueFactory = _ => "text" };
         output.AcceptOnlyFromAmong("text", "json");
+        var scope = EnvCommand.ScopeOption();
         var command = new Command("doctor", "Verifica instalações, manifesto e ambiente; --repair corrige o que for seguro")
         {
-            repair, installDir, output,
+            repair, installDir, output, scope,
         };
 
         command.SetAction((parseResult, cancellationToken) => CliApplication.ExecuteAsync(
@@ -27,18 +29,51 @@ internal static class DoctorCommand
             async (diagnostics, ct) =>
             {
                 var home = services.HomeDirectory();
-                var manifest = services.CreateManifestStore();
-                var roots = new List<string> { InstallLocations.DefaultUserRoot(home) };
-                if (parseResult.GetValue(installDir) is { } extra)
+                var global = parseResult.GetValue(scope) == "global";
+                InstallationManifestStore manifest;
+                List<string> roots;
+                SystemEnvironmentConfigurator? system = null;
+                if (global)
                 {
-                    roots.Add(InstallLocations.ValidateUserRoot(extra, home));
+                    // Só --repair altera algo; a verificação também é permitida sem root quando o estado é legível.
+                    var (layout, globalRoot) = GlobalScope.Prepare(
+                        services, services.DetectRid(), parseResult.GetValue(installDir), requireRoot: parseResult.GetValue(repair));
+                    if (parseResult.GetValue(repair))
+                    {
+                        GlobalScope.EnsureTrustedRoot(services, globalRoot);
+                        GlobalScope.EnsureTrustedState(services, layout);
+                    }
+
+                    manifest = new InstallationManifestStore(layout.ManifestFile);
+                    roots = [globalRoot];
+                    system = services.CreateSystemEnvironment(layout);
+                }
+                else
+                {
+                    manifest = services.CreateManifestStore();
+                    roots = [InstallLocations.DefaultUserRoot(home)];
+                    if (parseResult.GetValue(installDir) is { } extra)
+                    {
+                        roots.Add(InstallLocations.ValidateUserRoot(extra, home));
+                    }
                 }
 
                 roots.AddRange(manifest.Read().Select(r => r.Root));
+                if (global && parseResult.GetValue(repair))
+                {
+                    // Raízes vindas do manifesto também precisam ser confiáveis antes de qualquer reparo como root.
+                    foreach (var root in roots.Distinct(StringComparer.Ordinal))
+                    {
+                        GlobalScope.EnsureTrustedRoot(services, GlobalLocations.ValidateRoot(root));
+                    }
+                }
+
                 var findings = (await new InstallationDoctor(manifest, diagnostics)
                     .CheckAsync(roots, parseResult.GetValue(repair), ct)
                     .ConfigureAwait(false)).ToList();
-                findings.AddRange(await CheckEnvironmentAsync(services, home, ct).ConfigureAwait(false));
+                findings.AddRange(system is null
+                    ? await CheckEnvironmentAsync(services, home, ct).ConfigureAwait(false)
+                    : CheckSystemEnvironment(system));
                 findings.AddRange(services.FindMissingDependencies()
                     .Select(d => new DoctorFinding("native-dependency", FindingSeverity.Warning, $"Dependência nativa não encontrada: {d}.", false, false)));
 
@@ -130,6 +165,34 @@ internal static class DoctorCommand
 
         return findings;
     }
+
+    private static List<DoctorFinding> CheckSystemEnvironment(SystemEnvironmentConfigurator configurator)
+    {
+        var findings = new List<DoctorFinding>();
+        if (configurator.ConfiguredRoot() is not { } root)
+        {
+            return findings;
+        }
+
+        if (!File.Exists(Path.Combine(root, "dotnet")))
+        {
+            findings.Add(new DoctorFinding("env-root-missing", FindingSeverity.Warning, $"{configurator.Layout.ProfileScript} aponta para {root}, que não tem dotnet.", false, false));
+        }
+        else if (configurator.PlanApply(EnvironmentSetupTarget(root), EnvConflictPolicy.Override).Files
+            .Any(f => f.Path == configurator.Layout.InstallLocationFile || f.Original is null))
+        {
+            findings.Add(new DoctorFinding(
+                "env-system-changed",
+                FindingSeverity.Warning,
+                $"{configurator.Layout.ProfileScript} ou {configurator.Layout.InstallLocationFile} não correspondem mais à configuração do dotnetscope; execute dotnetscope env apply --scope global.",
+                false,
+                false));
+        }
+
+        return findings;
+    }
+
+    private static EnvironmentTarget EnvironmentSetupTarget(string root) => EnvironmentSetup.CreateGlobalTarget(root, telemetryOptOut: false);
 
     private static List<DoctorFinding> CheckWindowsEnvironment(WindowsEnvironmentConfigurator configurator)
     {

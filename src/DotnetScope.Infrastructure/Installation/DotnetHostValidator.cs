@@ -26,6 +26,14 @@ internal static class DotnetHostValidator
             UseShellExecute = false,
         };
         startInfo.ArgumentList.Add(argument);
+        if (!OperatingSystem.IsWindows())
+        {
+            // Ambiente mínimo: nada herdado (LD_PRELOAD, DOTNET_*, proxies) influencia o host executado, inclusive como root.
+            startInfo.Environment.Clear();
+            startInfo.Environment["PATH"] = "/usr/bin:/bin";
+            startInfo.Environment["LANG"] = "C.UTF-8";
+        }
+
         startInfo.Environment["DOTNET_ROOT"] = root;
         startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         startInfo.Environment["DOTNET_NOLOGO"] = "1";

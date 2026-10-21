@@ -9,6 +9,7 @@ using DotnetScope.Core.UserEnvironment;
 using DotnetScope.Core.Versions;
 using DotnetScope.Infrastructure.Installation;
 using DotnetScope.Infrastructure.Metadata;
+using DotnetScope.Infrastructure.SystemScope;
 using DotnetScope.Infrastructure.UserEnvironment;
 
 namespace DotnetScope.Cli.Commands;
@@ -111,24 +112,33 @@ internal static class InstallCommand
         InstallOptions options,
         CancellationToken cancellationToken)
     {
-        if (options.Scope == InstallScope.Global)
-        {
-            throw new DotnetScopeException(ExitCodes.Usage, "O escopo global ainda não está disponível nesta versão; use --scope user.");
-        }
-
         var rid = services.DetectRid();
         ValidateSourceOptions(options);
-        if (services.IsRoot() && !options.AllowRoot)
+        var home = services.HomeDirectory();
+        string root;
+        GlobalLayout? global = null;
+        if (options.Scope == InstallScope.Global)
         {
-            throw new DotnetScopeException(
-                ExitCodes.Privilege,
-                "O escopo user não deve ser executado como root; use um usuário comum ou --allow-root.");
+            (global, root) = GlobalScope.Prepare(services, rid, options.InstallDir);
+            GlobalScope.IgnoreUserCertificates(services, diagnostics);
+            GlobalScope.EnsureTrustedState(services, global);
+            GlobalScope.EnsureTrustedRoot(services, root);
+            GlobalLocations.EnsureTrusted(global.CacheDirectory, services.StatPath, "o cache de metadata");
+        }
+        else
+        {
+            if (services.IsRoot() && !options.AllowRoot)
+            {
+                throw new DotnetScopeException(
+                    ExitCodes.Privilege,
+                    "O escopo user não deve ser executado como root; use um usuário comum ou --allow-root.");
+            }
+
+            root = InstallLocations.ValidateUserRoot(options.InstallDir ?? InstallLocations.DefaultUserRoot(home), home);
         }
 
-        var home = services.HomeDirectory();
-        var root = InstallLocations.ValidateUserRoot(options.InstallDir ?? InstallLocations.DefaultUserRoot(home), home);
-        var (artifact, requestLabel, needsConfirmation) = await ResolveAsync(services, diagnostics, options, rid, cancellationToken)
-            .ConfigureAwait(false);
+        var (artifact, requestLabel, needsConfirmation) = await ResolveAsync(
+            services, diagnostics, options, rid, global?.MetadataCacheDirectory, cancellationToken).ConfigureAwait(false);
 
         if (artifact.Channel?.Phase == SupportPhase.Eol)
         {
@@ -138,12 +148,14 @@ internal static class InstallCommand
         var installed = InstallLocations.IsInstalled(root, artifact.Component, artifact.Version);
 
         // O ambiente é planejado antes de baixar: conflito de DOTNET_ROOT falha sem alterar nada.
-        var target = EnvironmentSetup.CreateTarget(root, home, options.TelemetryOptOut);
+        var target = global is null
+            ? EnvironmentSetup.CreateTarget(root, home, options.TelemetryOptOut)
+            : EnvironmentSetup.CreateGlobalTarget(root, options.TelemetryOptOut);
         IUserEnvironmentConfigurator? configurator = null;
         EnvironmentPlan? environmentPlan = null;
         if (options.ConfigureEnv)
         {
-            configurator = services.CreateEnvironmentConfigurator(home);
+            configurator = global is null ? services.CreateEnvironmentConfigurator(home) : services.CreateSystemEnvironment(global);
             environmentPlan = EnvironmentSetup.Plan(services, configurator, target, options.EnvConflict, options.Yes, options.DryRun);
         }
 
@@ -178,7 +190,16 @@ internal static class InstallCommand
         IProgress<DownloadProgress>? progress = !options.Json && services.Prompt.IsInteractive
             ? new ConsoleDownloadProgress(services.Error)
             : null;
-        using var installer = services.CreateInstaller(diagnostics, progress);
+        if (global is not null)
+        {
+            // A raiz global nasce com dono root e modo 0755, independentemente do umask, e é revalidada.
+            GlobalLocations.CreateDirectory(root);
+            GlobalScope.EnsureTrustedRoot(services, root);
+        }
+
+        using var installer = global is null
+            ? services.CreateInstaller(diagnostics, progress)
+            : services.CreateGlobalInstaller(global, diagnostics, progress);
         var result = await installer.InstallAsync(artifact, root, options.Scope, cancellationToken).ConfigureAwait(false);
         var statusName = result.Status == InstallStatus.Installed ? "installed" : "alreadyInstalled";
         EnvironmentOutcome environment;
@@ -238,6 +259,7 @@ internal static class InstallCommand
         IDiagnosticSink diagnostics,
         InstallOptions options,
         string rid,
+        string? cacheDirectory,
         CancellationToken cancellationToken)
     {
         if (options.Archive is not null)
@@ -264,7 +286,7 @@ internal static class InstallCommand
             return (new ResolvedArtifact(request.Component, exact.Version, null, exact.Version.ToString(), rid, file), $"{request} (arquivo local)", false);
         }
 
-        var source = services.CreateMetadataSource(new MetadataOptions(options.Offline), diagnostics);
+        var source = services.CreateMetadataSource(new MetadataOptions(options.Offline, cacheDirectory), diagnostics);
         try
         {
             var resolver = new VersionResolver(source);

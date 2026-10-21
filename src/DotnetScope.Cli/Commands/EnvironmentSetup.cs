@@ -22,7 +22,7 @@ internal sealed record EnvironmentOutcome(
 
     public EnvironmentJson ToJson() => new(
         Target.DotnetRoot,
-        [Target.DotnetRoot, Target.ToolsDirectory],
+        Target.ToolsDirectory.Length == 0 ? [Target.DotnetRoot] : [Target.DotnetRoot, Target.ToolsDirectory],
         Status,
         Script,
         ChangedFiles,
@@ -36,6 +36,9 @@ internal static class EnvironmentSetup
 {
     public static EnvironmentTarget CreateTarget(string root, string home, bool telemetryOptOut) =>
         new(root, Path.Combine(home, ".dotnet", "tools"), telemetryOptOut);
+
+    /// <summary>Escopo global: somente a raiz entra no PATH (sem diretório de ferramentas).</summary>
+    public static EnvironmentTarget CreateGlobalTarget(string root, bool telemetryOptOut) => new(root, string.Empty, telemetryOptOut);
 
     /// <summary>Planeja e confirma (links simbólicos exigem confirmação); lança antes de qualquer gravação.</summary>
     public static EnvironmentPlan Plan(
@@ -103,9 +106,33 @@ internal static class EnvironmentSetup
                 target, result.ChangedFiles.Count > 0 ? "applied" : "unchanged", null, result.ChangedFiles, result.Backups, plan.Conflicts, verification);
         }
 
-        foreach (var system in new[] { "/usr/bin/dotnet", "/usr/local/bin/dotnet" }.Where(File.Exists))
+        if (configurator is SystemEnvironmentConfigurator system)
         {
-            diagnostics.Warning($"há um dotnet do sistema em {system}; os shells configurados priorizam {target.DotnetRoot}.");
+            // Escopo global: nunca abre o shell de login de quem elevou (perfis do usuário executariam como root).
+            LoginShellResult? verification = null;
+            try
+            {
+                verification = await system.VerifyAsync(target.DotnetRoot, cancellationToken).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // A verificação é informativa: qualquer falha vira aviso sem desfazer a configuração.
+            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+#pragma warning restore CA1031
+            {
+                diagnostics.Warning($"não foi possível verificar {system.Layout.ProfileScript}: {exception.Message}");
+            }
+
+            if (verification is { Matches: false })
+            {
+                diagnostics.Warning($"carregando {system.Layout.ProfileScript}, dotnet resolve para {verification.ResolvedDotnet ?? "nada"}.");
+            }
+
+            return new EnvironmentOutcome(
+                target, result.ChangedFiles.Count > 0 ? "applied" : "unchanged", configurator.SessionScript, result.ChangedFiles, result.Backups, plan.Conflicts, verification);
+        }
+
+        foreach (var systemDotnet in new[] { "/usr/bin/dotnet", "/usr/local/bin/dotnet" }.Where(File.Exists))
+        {
+            diagnostics.Warning($"há um dotnet do sistema em {systemDotnet}; os shells configurados priorizam {target.DotnetRoot}.");
         }
 
         LoginShellResult? probe = null;
@@ -187,7 +214,7 @@ internal static class EnvironmentSetup
             : $"""
               Para usar nesta sessão:
                 export DOTNET_ROOT={ShellQuoting.Posix(target.DotnetRoot)}
-                export PATH={ShellQuoting.Posix(target.DotnetRoot)}:{ShellQuoting.Posix(target.ToolsDirectory)}:"$PATH"
+                export PATH={ShellQuoting.Posix(target.DotnetRoot)}:{(target.ToolsDirectory.Length == 0 ? string.Empty : ShellQuoting.Posix(target.ToolsDirectory) + ":")}"$PATH"
               """);
 
     private static string Display(string path, string home) =>

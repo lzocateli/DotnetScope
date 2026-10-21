@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using DotnetScope.Cli.Output;
 using DotnetScope.Core;
+using DotnetScope.Core.Installation;
 using DotnetScope.Core.Releases;
 using DotnetScope.Core.Resolution;
 using DotnetScope.Core.Versions;
@@ -92,11 +93,33 @@ internal static class ListCommand
         return command;
     }
 
+    /// <summary>
+    /// Registros do escopo global no Linux. O manifesto global é privado do root: para outros usuários ele é ignorado e
+    /// as instalações globais aparecem como <c>external</c>.
+    /// </summary>
+    private static IReadOnlyList<InstallationRecord> ReadGlobalRecords(CliServices services)
+    {
+        var rid = services.DetectRid();
+        if (!rid.StartsWith("linux-", StringComparison.Ordinal))
+        {
+            return [];
+        }
+
+        try
+        {
+            return new InstallationManifestStore(services.CreateGlobalLayout(rid).ManifestFile).Read();
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+        {
+            return [];
+        }
+    }
+
     private static async Task<int> ListInstalledAsync(CliServices services, string? installDir, bool json)
     {
         var home = services.HomeDirectory();
         var userRoot = InstallLocations.ValidateUserRoot(installDir ?? InstallLocations.DefaultUserRoot(home), home);
-        var records = services.CreateManifestStore().Read();
+        var records = services.CreateManifestStore().Read().Concat(ReadGlobalRecords(services)).ToList();
         var roots = new[] { userRoot }.Concat(records.Select(r => r.Root)).Concat(services.SystemRoots()).Where(Directory.Exists);
         var items = InstalledInventory.Scan(roots, records, home, services.IsPackageManaged);
 

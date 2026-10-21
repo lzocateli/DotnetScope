@@ -326,7 +326,10 @@ runners efêmeros.
 | F4 | `uninstall`, `list --installed`, `doctor [--repair]`, `install --archive <arquivo> --sha512 <hash>` (seção 7), `install --from-global-json [caminho]` (seção 3, com `rollForward`) | reversão completa e origem correta na listagem; instalação offline verificada; versão resolvida conforme `global.json` | concluída (E2E com remoção completa em Ubuntu 24.04 e Fedora 41) |
 | F5 | Publicação AOT multi-RID, `install.sh`/`install.ps1`, release no GitHub | binários rodam sem .NET; checksums publicados | concluída (smoke em Ubuntu 18.04, Rocky 8, Debian 12, Alpine 3.17/3.24 e runners Windows/macOS; [processo de release](release.md)) |
 | F6 | Windows user (zip + registro + `WM_SETTINGCHANGE`) | `dotnet` disponível em novo terminal; reversão do registro | concluída (testes nativos e E2E em `windows-2025`; [referência](cli.md#windows)) |
-| F7 | Global: `apt`, instalador Windows, `.pkg`, instalação por arquivo (D4), `--install-deps` | instalação elevada validada; mistura com pacote recusada; requisitos R01–R20 do [modelo de ameaças](modelo-de-ameacas-f7.md) com testes negativos | pendente (modelo de ameaças aprovado em 2026-10-21) |
+| F7a | Global Linux por arquivo (D4): elevação, diretórios confiáveis, estado e cache globais, `/etc/profile.d`, `install_location`, `uninstall`/`env`/`list`/`doctor` globais | R03, R05–R09, R13, R14 (parcial), R17, R18 (`archive`) e R20 do [modelo de ameaças](modelo-de-ameacas-f7.md) com testes negativos; E2E Ubuntu 24.04 e Fedora 41 | concluída |
+| F7b | Global Linux por `apt` (`--source auto\|archive\|apt`) e `--install-deps` | R10–R12, R19 | pendente |
+| F7c | Global Windows: instalador `.exe` com Authenticode e `archive` com `HKLM` | R01–R04, R10, R16, R18 | pendente |
+| F7d | Global macOS: `.pkg` com assinatura e `archive` com `/etc/paths.d` | R01–R03, R10, R16 | pendente |
 | F8 | macOS user | E2E em runner macOS | pendente |
 | F9 | Assinatura, SBOM, Authenticode/`.pkg`, `.deb`/APT, winget, Homebrew | artefatos assinados e verificáveis | pendente |
 
@@ -379,6 +382,19 @@ com milestone, e é entregue por PR com as evidências do template.
     porque o Windows PowerShell 5.1 pode não habilitá-lo por padrão;
   - smoke de `linux-arm64` e `win-arm64` roda em runners Arm64 nativos
     (`ubuntu-24.04-arm`, `windows-11-arm`), sem emulação.
+- Decisões de implementação da F7a:
+  - a F7 foi dividida em F7a a F7d (Linux por arquivo, `apt`, Windows e macOS)
+    para validar cada sistema separadamente;
+  - dono e permissões são lidos com o `stat` do sistema: o .NET não expõe o UID
+    do dono, e um P/Invoke de `stat` dependeria do layout da struct por libc e
+    arquitetura (e o símbolo nem é exportado na glibc 2.27 da base de build);
+  - o escopo global não inclui `~/.dotnet/tools` no `PATH` (plano, seção 4.1);
+  - `/usr/bin/dotnet` ou `/usr/local/bin/dotnet` apontando para outra raiz é
+    tratado como conflito de ambiente (`--env-conflict`), o que cobre a mistura
+    com o pacote da distribuição no `PATH` (R10, parcial; a detecção completa
+    vem com o `apt` na F7b);
+  - o manifesto global fica privado do root; para outros usuários, as
+    instalações globais aparecem como `external`.
 - Decisões de implementação da F6:
   - o `Path` do usuário recebe a raiz e as ferramentas no início, preservando o
     tipo existente; com `REG_EXPAND_SZ`, as ferramentas usam

@@ -38,6 +38,10 @@ public sealed class ArchiveInstaller : IArtifactInstaller
     public static ArchiveInstaller CreateOfficial(IDiagnosticSink diagnostics, IProgress<DownloadProgress>? progress) =>
         new(TrustedHttpFetcher.CreateOfficial(diagnostics), InstallationManifestStore.CreateDefault(), diagnostics, progress);
 
+    /// <summary>Instalador do escopo global, com manifesto no estado do sistema.</summary>
+    public static ArchiveInstaller CreateOfficial(InstallationManifestStore manifest, IDiagnosticSink diagnostics, IProgress<DownloadProgress>? progress) =>
+        new(TrustedHttpFetcher.CreateOfficial(diagnostics), manifest, diagnostics, progress);
+
     internal TimeSpan LockTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>Teste: permite injetar falhas na mesclagem.</summary>
