@@ -22,6 +22,7 @@ internal static class CliApplication
         root.SetAction(parseResult => new HelpAction().Invoke(parseResult));
         root.Subcommands.Add(ListCommand.Build(services));
         root.Subcommands.Add(InstallCommand.Build(services));
+        root.Subcommands.Add(EnvCommand.Build(services));
         return root;
     }
 

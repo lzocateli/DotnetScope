@@ -4,6 +4,7 @@ using DotnetScope.Core.Releases;
 using DotnetScope.Infrastructure.Installation;
 using DotnetScope.Infrastructure.Metadata;
 using DotnetScope.Infrastructure.Platform;
+using DotnetScope.Infrastructure.UserEnvironment;
 
 namespace DotnetScope.Cli;
 
@@ -24,6 +25,12 @@ internal sealed record CliServices(
     public Func<IReadOnlyList<string>> FindMissingDependencies { get; init; } = NativeDependencyChecker.FindMissing;
 
     public IUserPrompt Prompt { get; init; } = new ConsolePrompt();
+
+    public Func<string, EnvironmentLayout> CreateEnvironmentLayout { get; init; } = EnvironmentLayout.CreateDefault;
+
+    public Func<string?> LoginShell { get; init; } = LoginShellProbe.DefaultShell;
+
+    public Func<string?, string, CancellationToken, Task<LoginShellResult?>> ProbeLoginShell { get; init; } = LoginShellProbe.ProbeAsync;
 
     public static CliServices CreateDefault(TextWriter output, TextWriter error) =>
         new(output, error, ReleaseMetadataClient.CreateOfficial, PlatformDetector.DetectRid);

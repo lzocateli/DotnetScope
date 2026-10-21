@@ -4,6 +4,8 @@ using DotnetScope.Cli.Commands;
 using DotnetScope.Core;
 using DotnetScope.Core.Installation;
 using DotnetScope.Core.Resolution;
+using DotnetScope.Core.UserEnvironment;
+using DotnetScope.Infrastructure.UserEnvironment;
 
 namespace DotnetScope.UnitTests;
 
@@ -122,6 +124,17 @@ public sealed class InstallCommandTests
         var result = await RunAsync(["install", "sdk", "10.0.402"]);
 
         Assert.Contains("Instalado: sdk 10.0.402", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Ambiente configurado:", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Para usar nesta sessão: . '", result.Output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Install_ConfigureEnvFalse_SomenteImprimeInstrucoes()
+    {
+        var result = await RunAsync(["install", "sdk", "10.0.402", "--configure-env", "false"]);
+
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        Assert.Contains("--configure-env false", result.Output, StringComparison.Ordinal);
         Assert.Contains("export PATH='/home/teste/.dotnet':'/home/teste/.dotnet/tools':\"$PATH\"", result.Output, StringComparison.Ordinal);
     }
 
@@ -130,7 +143,7 @@ public sealed class InstallCommandTests
     [InlineData("/home/o'brien/dotnet", "'/home/o'\\''brien/dotnet'")]
     [InlineData("/tmp/$(rm -rf ~)", "'/tmp/$(rm -rf ~)'")]
     public void ShellQuote_EscapaParaShellPosix(string value, string expected) =>
-        Assert.Equal(expected, InstallCommand.ShellQuote(value));
+        Assert.Equal(expected, ShellQuoting.Posix(value));
 
     private static async Task<(int ExitCode, string Output, string Error, FakeInstaller Installer)> RunAsync(
         string[] args,
@@ -142,6 +155,7 @@ public sealed class InstallCommandTests
         using var output = new StringWriter();
         using var error = new StringWriter();
         var installer = new FakeInstaller();
+        var profileHome = Path.Combine(Path.GetTempPath(), "dotnetscope-tests", Guid.NewGuid().ToString("N"));
         var services = new CliServices(output, error, (_, _) => new FixtureMetadataSource(), () => rid)
         {
             CreateInstaller = (_, _) => installer,
@@ -149,10 +163,28 @@ public sealed class InstallCommandTests
             HomeDirectory = () => home ?? Home,
             FindMissingDependencies = () => missing ?? [],
             Prompt = new NonInteractivePrompt(),
+            CreateEnvironmentLayout = _ => new EnvironmentLayout(
+                profileHome,
+                Path.Combine(profileHome, ".config"),
+                Path.Combine(profileHome, ".local", "state"),
+                IsMacOS: false,
+                FishAvailable: false,
+                SystemFiles: []),
+            ProbeLoginShell = (_, _, _) => Task.FromResult<LoginShellResult?>(null),
         };
 
-        var exitCode = await CliApplication.RunAsync(args, services, TestContext.Current.CancellationToken);
-        return (exitCode, output.ToString(), error.ToString(), installer);
+        try
+        {
+            var exitCode = await CliApplication.RunAsync(args, services, TestContext.Current.CancellationToken);
+            return (exitCode, output.ToString(), error.ToString(), installer);
+        }
+        finally
+        {
+            if (Directory.Exists(profileHome))
+            {
+                Directory.Delete(profileHome, recursive: true);
+            }
+        }
     }
 
     private sealed class NonInteractivePrompt : IUserPrompt

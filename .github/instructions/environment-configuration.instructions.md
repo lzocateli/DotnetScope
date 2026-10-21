@@ -1,7 +1,7 @@
 ---
 name: "Configuração de ambiente e PATH"
 description: "Use ao criar ou alterar a configuração de DOTNET_ROOT, PATH, arquivos de perfil de shell (bash, zsh, fish, PowerShell), registro do Windows, /etc/profile.d, /etc/paths.d, install_location ou o comando env do DotnetScope."
-applyTo: "src/**/Environment/**, src/**/Profiles/**, src/**/Registry/**, tests/**/Environment/**"
+applyTo: "src/**/UserEnvironment/**, src/**/Registry/**, tests/**/*Environment*"
 ---
 
 # Configuração de ambiente e PATH

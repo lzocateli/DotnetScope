@@ -5,9 +5,11 @@ using DotnetScope.Core;
 using DotnetScope.Core.Installation;
 using DotnetScope.Core.Releases;
 using DotnetScope.Core.Resolution;
+using DotnetScope.Core.UserEnvironment;
 using DotnetScope.Core.Versions;
 using DotnetScope.Infrastructure.Installation;
 using DotnetScope.Infrastructure.Metadata;
+using DotnetScope.Infrastructure.UserEnvironment;
 
 namespace DotnetScope.Cli.Commands;
 
@@ -40,6 +42,13 @@ internal static class InstallCommand
         var dryRun = new Option<bool>("--dry-run") { Description = "Mostra o plano sem baixar nem alterar arquivos" };
         var yes = new Option<bool>("--yes", "-y") { Description = "Confirma o plano sem perguntar" };
         var allowRoot = new Option<bool>("--allow-root") { Description = "Permite o escopo user executando como root" };
+        var configureEnv = new Option<bool>("--configure-env")
+        {
+            Description = "Configura DOTNET_ROOT e PATH nos perfis do usuário (true|false)",
+            DefaultValueFactory = _ => true,
+        };
+        var envConflict = EnvCommand.ConflictOption();
+        var telemetry = EnvCommand.TelemetryOption();
         var output = new Option<string>("--output")
         {
             Description = "Formato de saída: text ou json",
@@ -49,7 +58,8 @@ internal static class InstallCommand
 
         var command = new Command("install", "Instala um SDK ou runtime .NET a partir do arquivo oficial verificado por SHA-512")
         {
-            component, version, scope, installDir, prerelease, offline, dryRun, yes, allowRoot, output,
+            component, version, scope, installDir, prerelease, offline, dryRun, yes, allowRoot, configureEnv, envConflict, telemetry,
+            output,
         };
 
         command.SetAction((parseResult, cancellationToken) => CliApplication.ExecuteAsync(
@@ -69,7 +79,9 @@ internal static class InstallCommand
                     parseResult.GetValue(yes),
                     parseResult.GetValue(allowRoot),
                     parseResult.GetValue(output) == "json",
-                    parseResult.GetValue(CliApplication.VerboseOption)),
+                    parseResult.GetValue(configureEnv),
+                    EnvCommand.ParsePolicy(parseResult.GetValue(envConflict)),
+                    parseResult.GetValue(telemetry)),
                 ct),
             cancellationToken));
 
@@ -123,10 +135,31 @@ internal static class InstallCommand
         }
 
         var installed = InstallLocations.IsInstalled(root, artifact.Component, artifact.Version);
+
+        // O ambiente é planejado antes de baixar: conflito de DOTNET_ROOT falha sem alterar nada.
+        var target = EnvironmentSetup.CreateTarget(root, home, options.TelemetryOptOut);
+        UnixEnvironmentConfigurator? configurator = null;
+        EnvironmentPlan? environmentPlan = null;
+        if (options.ConfigureEnv)
+        {
+            configurator = new UnixEnvironmentConfigurator(services.CreateEnvironmentLayout(home));
+            environmentPlan = EnvironmentSetup.Plan(services, configurator, target, options.EnvConflict, options.Yes, options.DryRun);
+        }
+
         if (options.DryRun)
         {
             var status = installed ? "alreadyInstalled" : "planned";
-            await WriteAsync(services, options, request, artifact, root, home, status, null, []).ConfigureAwait(false);
+            var planned = environmentPlan is null
+                ? Disabled(target)
+                : new EnvironmentOutcome(
+                    target,
+                    environmentPlan.Skipped ? "skipped" : environmentPlan.HasChanges ? "planned" : "unchanged",
+                    configurator!.Layout.EnvScript,
+                    environmentPlan.Profiles.Select(p => p.Path).Concat(environmentPlan.Files.Select(f => f.Path)).ToList(),
+                    [],
+                    environmentPlan.Conflicts,
+                    null);
+            await WriteAsync(services, options, request, artifact, root, home, status, null, [], planned).ConfigureAwait(false);
             return ExitCodes.Success;
         }
 
@@ -147,7 +180,23 @@ internal static class InstallCommand
         using var installer = services.CreateInstaller(diagnostics, progress);
         var result = await installer.InstallAsync(artifact, root, options.Scope, cancellationToken).ConfigureAwait(false);
         var statusName = result.Status == InstallStatus.Installed ? "installed" : "alreadyInstalled";
-        await WriteAsync(services, options, request, artifact, root, home, statusName, result, missing).ConfigureAwait(false);
+        EnvironmentOutcome environment;
+        if (configurator is null)
+        {
+            environment = Disabled(target);
+        }
+        else if (!result.Validation.Succeeded)
+        {
+            environment = new EnvironmentOutcome(target, "notApplied", null, [], [], [], null);
+        }
+        else
+        {
+            // Replaneja para não gravar sobre perfis alterados durante o download.
+            var fresh = configurator.PlanApply(target, options.EnvConflict);
+            environment = await EnvironmentSetup.ApplyAsync(services, configurator, fresh, diagnostics, cancellationToken).ConfigureAwait(false);
+        }
+
+        await WriteAsync(services, options, request, artifact, root, home, statusName, result, missing, environment).ConfigureAwait(false);
 
         if (!result.Validation.Succeeded)
         {
@@ -220,11 +269,9 @@ internal static class InstallCommand
         string home,
         string status,
         InstallResult? result,
-        IReadOnlyList<string> missing)
+        IReadOnlyList<string> missing,
+        EnvironmentOutcome environment)
     {
-        // Ferramentas globais (dotnet tool install -g) ficam sempre em ~/.dotnet/tools, qualquer que seja a raiz.
-        var tools = Path.Combine(home, ".dotnet", "tools");
-        var pathEntries = new[] { root, tools };
         if (options.Json)
         {
             var document = new InstallJson(
@@ -241,7 +288,7 @@ internal static class InstallCommand
                 result?.HostReplaced ?? false,
                 result is null ? null : new ValidationJson(result.Validation.Succeeded, result.Validation.Detail),
                 missing,
-                new EnvironmentJson(root, pathEntries));
+                environment.ToJson());
             await services.Output.WriteLineAsync(JsonSerializer.Serialize(document, InstallJsonContext.Default.InstallJson))
                 .ConfigureAwait(false);
             return;
@@ -260,18 +307,31 @@ internal static class InstallCommand
             await services.Output.WriteLineAsync($"Validação: {result.Validation.Detail}.").ConfigureAwait(false);
         }
 
-        if (status != "planned")
+        if (options.DryRun)
         {
-            await services.Output.WriteLineAsync(
-                $"""
-                Para usar nesta sessão:
-                  export DOTNET_ROOT={ShellQuote(root)}
-                  export PATH={ShellQuote(root)}:{ShellQuote(tools)}:"$PATH"
-                """).ConfigureAwait(false);
+            var environmentLine = environment.Status switch
+            {
+                "planned" => $"Ambiente: seriam alterados {string.Join(", ", environment.ChangedFiles)}.",
+                "unchanged" => "Ambiente: já configurado.",
+                "skipped" => "Ambiente: não seria alterado (--env-conflict skip).",
+                _ => "Ambiente: não seria alterado (--configure-env false).",
+            };
+            await services.Output.WriteLineAsync(environmentLine).ConfigureAwait(false);
+            return;
+        }
+
+        if (environment.Status == "disabled")
+        {
+            await services.Output.WriteLineAsync("Ambiente não alterado (--configure-env false).").ConfigureAwait(false);
+            await EnvironmentSetup.WriteManualInstructionsAsync(services.Output, environment.Target).ConfigureAwait(false);
+        }
+        else if (environment.Status != "notApplied")
+        {
+            await EnvironmentSetup.WriteTextAsync(services.Output, environment, home).ConfigureAwait(false);
         }
     }
 
-    internal static string ShellQuote(string value) => "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
+    private static EnvironmentOutcome Disabled(EnvironmentTarget target) => new(target, "disabled", null, [], [], [], null);
 
     private sealed record InstallOptions(
         string Component,
@@ -284,5 +344,7 @@ internal static class InstallCommand
         bool Yes,
         bool AllowRoot,
         bool Json,
-        bool Verbose);
+        bool ConfigureEnv,
+        EnvConflictPolicy EnvConflict,
+        bool TelemetryOptOut);
 }

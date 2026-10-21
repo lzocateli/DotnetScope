@@ -314,8 +314,8 @@ runners efêmeros.
 | F0b | `global.json`, `Directory.*.props`, `DotnetScope.slnx`, projetos base, `ExitCodes`, `tools/scripts/Invoke-Validation.ps1`, workflow `pr-validation` | build, testes e AOT `linux-x64` verdes em container e no CI | concluída |
 | F1 | Parsing, cliente de metadata, cache, `list --available` | resolução correta com fixtures, incluindo `lts`/`sts`/feature band | concluída ([referência](cli.md)) |
 | F2 | `install` user Linux por arquivo, verificação, extração segura, manifesto, lock | SDK funcional em container limpo; casos maliciosos rejeitados | concluída (E2E Ubuntu 24.04 e Fedora 41) |
-| F3 | `--configure-env` (Linux/macOS), `env show\|apply\|remove`, detecção de conflito | casos obrigatórios da seção 12 verdes | pendente |
-| F4 | `uninstall`, `list --installed`, `doctor [--repair]` | reversão completa e origem correta na listagem | pendente |
+| F3 | `--configure-env` (Linux/macOS), `env show\|apply\|remove`, detecção de conflito | casos obrigatórios da seção 12 verdes | concluída (E2E bash/zsh/fish em Ubuntu 24.04 e Fedora 41) |
+| F4 | `uninstall`, `list --installed`, `doctor [--repair]`, `install --archive <arquivo> --sha512 <hash>` (seção 7), `install --from-global-json [caminho]` (seção 3, com `rollForward`) | reversão completa e origem correta na listagem; instalação offline verificada; versão resolvida conforme `global.json` | pendente |
 | F5 | Publicação AOT multi-RID, `install.sh`/`install.ps1`, release no GitHub | binários rodam sem .NET; checksums publicados | pendente |
 | F6 | Windows user (zip + registro + `WM_SETTINGCHANGE`) | `dotnet` disponível em novo terminal; reversão do registro | pendente |
 | F7 | Global: `apt`, instalador Windows, `.pkg`, instalação por arquivo (D4), `--install-deps` | instalação elevada validada; mistura com pacote recusada | pendente |
@@ -337,8 +337,15 @@ com milestone, e é entregue por PR com as evidências do template.
   distribuições com glibc anterior (Ubuntu 22.04, Debian 12). A matriz E2E da F2
   cobre Ubuntu 24.04 e Fedora 41; as demais distribuições da seção 12 dependem da
   base de build antiga e do RID `linux-musl-x64` (F5).
-- Pendências não atribuídas a fases e propostas para a F4: `install --archive
-  <arquivo> --sha512 <hash>` (seção 7) e `install --from-global-json` (seção 3).
+- `install --archive` e `install --from-global-json` foram atribuídos à F4 em
+  2026-10-20 (decisão do revisor humano).
+- Decisões de implementação da F3:
+  - o bloco dos perfis usa sempre LF;
+  - além dos perfis da seção 4.2, `~/.bash_profile` e `~/.bash_login` recebem o
+    bloco quando existem, porque o bash de login não lê `~/.profile` nesse caso;
+  - a remoção exata usa o estado em `~/.local/state/dotnetscope/env-state.json`.
+- A configuração de ambiente no Windows (registro) continua na F6 e a global
+  (`/etc/profile.d`, `/etc/paths.d`, `install_location`) na F7.
 - O metadata oficial publica assinatura PKCS#7 destacada (campo `signature`,
   arquivo `.p7s`). Hoje a confiança no metadata vem do TLS e da allowlist;
   avaliar a verificação dessa assinatura (compatível com AOT) na F9.

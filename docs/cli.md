@@ -116,6 +116,9 @@ dotnetscope install <COMPONENTE-versão> [opções]
 | `--dry-run` | `false` | Mostra o plano sem criar diretórios nem baixar. |
 | `-y`, `--yes` | `false` | Confirma quando a versão resolvida difere da informada (canal, feature band, `lts`, `sts`). |
 | `--allow-root` | `false` | Permite o escopo user executando como root. |
+| `--configure-env` | `true` | Configura `DOTNET_ROOT` e `PATH` nos perfis (seção [`env`](#env)); `false` só imprime as instruções. |
+| `--env-conflict` | `fail` | `fail`, `override` ou `skip` quando terceiros definem outro `DOTNET_ROOT`. |
+| `--telemetry-optout` | `false` | Inclui `DOTNET_CLI_TELEMETRY_OPTOUT=1` no ambiente. |
 | `--output` | `text` | `text` ou `json`. |
 
 Componentes e especificações de versão seguem as mesmas regras de
@@ -129,33 +132,38 @@ Componentes e especificações de versão seguem as mesmas regras de
    recusados com código `7`: `/`, o próprio home, diretórios do sistema (`/usr`,
    `/opt`, `/etc`, `/var` etc.) e o home de outros usuários. Subdiretórios do
    próprio home são sempre aceitos, mesmo quando o home fica em um desses locais.
-3. Resolve a versão. Se ela não for exata, pede confirmação no terminal ou exige
+3. Com `--configure-env true`, planeja o ambiente antes de baixar: um conflito
+   de `DOTNET_ROOT` com a política `fail` retorna código `6` sem alterar nada.
+4. Resolve a versão. Se ela não for exata, pede confirmação no terminal ou exige
    `--yes`: sem terminal interativo, retorna código `2`; se o usuário recusar,
    código `130`.
-4. Se `sdk/<versão>` ou `shared/<framework>/<versão>` já existe na raiz, de
+5. Se `sdk/<versão>` ou `shared/<framework>/<versão>` já existe na raiz, de
    qualquer origem, informa que já está instalado e não baixa nada.
-5. Obtém um lock exclusivo da raiz (`.dotnetscope.lock`). Se outra operação
+6. Obtém um lock exclusivo da raiz (`.dotnetscope.lock`). Se outra operação
    estiver em andamento, retorna código `6` após 30 segundos.
-6. Baixa para um diretório temporário privado dentro da raiz
+7. Baixa para um diretório temporário privado dentro da raiz
    (`.dotnetscope-staging-<id>`, modo `0700`), retomando com `Range` após falhas
    transitórias, e verifica o SHA-512 antes de extrair (código `5` se divergir).
-7. Extrai aceitando somente diretórios e arquivos regulares com caminhos
+8. Extrai aceitando somente diretórios e arquivos regulares com caminhos
    relativos confinados. Links, dispositivos, caminhos absolutos, `..`, nomes
    duplicados e arquivos acima dos limites são recusados com código `5`.
-8. Move para a raiz apenas as pastas versionadas e os arquivos ausentes, sem
+9. Move para a raiz apenas as pastas versionadas e os arquivos ausentes, sem
    substituir nada existente. O executável `dotnet` só é atualizado quando o
    `host/fxr` do arquivo é mais novo que todos os da raiz. Falhas desfazem o que
    foi movido. Ctrl+C cancela o download e a extração e remove o staging; depois
    que a mesclagem começa (operação de milissegundos), ela é concluída.
-9. Registra a instalação no manifesto e valida o host com `dotnet --list-sdks`
-   ou `--list-runtimes`.
+10. Registra a instalação no manifesto e valida o host com `dotnet --list-sdks`
+    ou `--list-runtimes`.
+11. Se a validação passou e `--configure-env` é `true`, aplica o ambiente e
+    verifica um shell de login novo.
 
 Bibliotecas nativas ausentes (ICU, OpenSSL, libstdc++, libgcc_s, certificados de
 CA) geram avisos antes da instalação. Se a validação falhar, os arquivos
 permanecem instalados e o código é `8` quando há dependências ausentes, ou `1`
 nos demais casos.
 
-Ao final, a CLI mostra como usar o .NET na sessão atual:
+Ao final, a CLI mostra como usar o .NET na sessão atual: `. '<env.sh>'` com o
+ambiente configurado ou, com `--configure-env false`, os comandos:
 
 ```bash
 export DOTNET_ROOT='/home/usuario/.dotnet'
@@ -164,9 +172,6 @@ export PATH='/home/usuario/.dotnet':'/home/usuario/.dotnet/tools':"$PATH"
 
 As ferramentas globais (`dotnet tool install -g`) ficam sempre em
 `~/.dotnet/tools`, mesmo com `--install-dir`.
-
-A configuração persistente do perfil (`--configure-env`, seção 4 do
-[plano](plano-implementacao.md)) ainda não está implementada.
 
 ### Saída JSON do `install`
 
@@ -185,13 +190,122 @@ A configuração persistente do perfil (`--configure-env`, seção 4 do
   "hostReplaced": false,
   "validation": { "succeeded": true, "detail": "dotnet --list-sdks lista 10.0.402" },
   "missingDependencies": [],
-  "environment": { "dotnetRoot": "/home/usuario/.dotnet", "pathEntries": ["/home/usuario/.dotnet", "/home/usuario/.dotnet/tools"] }
+  "environment": { "dotnetRoot": "/home/usuario/.dotnet", "status": "applied", "...": "mesmo formato de env apply" }
 }
 ```
 
 `status` é `installed`, `alreadyInstalled` ou `planned` (`--dry-run`).
 `addedPaths` são as pastas criadas por esta instalação; `sharedPaths`, as que o
 arquivo contém, mas já existiam. `validation` é `null` em `--dry-run`.
+
+## `env`
+
+Configura `DOTNET_ROOT` e `PATH` nos perfis do usuário no Linux e no macOS. O
+`install` executa o mesmo fluxo por padrão (`--configure-env true`).
+
+```text
+dotnetscope env show   [--shell posix|sh|bash|zsh|fish] [--install-dir <dir>] [--telemetry-optout]
+dotnetscope env apply  [--install-dir <dir>] [--env-conflict fail|override|skip] [--telemetry-optout]
+                       [-y|--yes] [--dry-run] [--output text|json]
+dotnetscope env remove [--dry-run] [--output text|json]
+```
+
+- `env show` só imprime o script, sem gravar nada. É útil para a sessão atual:
+  `eval "$(dotnetscope env show)"`.
+- `env apply` exige `dotnet` na raiz (código `3` se não houver).
+- `env remove` retira o bloco e os scripts próprios, restaurando os perfis byte
+  a byte. Um perfil que o DotnetScope criou é apagado se ficar vazio.
+
+### O que é gravado
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| `~/.config/dotnetscope/env.sh` (ou `$XDG_CONFIG_HOME`) | `DOTNET_ROOT` e entradas de `PATH` (raiz e `~/.dotnet/tools`) com guardas `case ":$PATH:"`, mais `DOTNET_CLI_TELEMETRY_OPTOUT=1` com `--telemetry-optout`. |
+| `~/.config/fish/conf.d/dotnetscope.fish` | Equivalente para o fish, quando ele está instalado ou `~/.config/fish` existe. |
+| `~/.profile`, `~/.bash_profile`, `~/.bash_login`, `~/.bashrc`, `~/.zprofile`, `~/.zshrc` | Bloco que carrega o `env.sh`, somente nos arquivos que já existem. Exceções: `~/.profile` é criado no Linux e `~/.zprofile` no macOS. |
+
+O bloco gravado nos perfis é:
+
+```sh
+# >>> dotnetscope >>>
+# Gerenciado por dotnetscope. Use `dotnetscope env remove` para remover.
+if [ -f "$HOME"/'.config/dotnetscope/env.sh' ]; then . "$HOME"/'.config/dotnetscope/env.sh'; fi
+# <<< dotnetscope <<<
+```
+
+### Garantias
+
+- Nada fora dos marcadores é alterado. Aplicar duas vezes não modifica nenhum
+  arquivo e não gera novos backups.
+- Os valores usam aspas simples: caminhos com espaço, aspas, `$` ou crase nunca
+  viram código.
+- Cada arquivo editado ganha um backup em
+  `~/.local/state/dotnetscope/backups/<arquivo>.<data>` (modo `0600`). A gravação
+  é atômica e preserva permissões.
+- Perfis que não estão em UTF-8 ou com bloco malformado não são editados
+  (código `6`).
+- Se um perfil for alterado entre o planejamento e a gravação, nada é gravado
+  (código `6`).
+- Um perfil que é link simbólico (dotfiles) é editado no alvo, mantendo o link.
+  Isso exige confirmação no terminal ou `--yes`; sem terminal, retorna código
+  `2`. `--dry-run` nunca pede confirmação.
+- Com `--configure-env false`, nenhum arquivo é tocado; a CLI só imprime os
+  `export` equivalentes.
+- O bloco usa sempre LF, mesmo em perfis com CRLF, para continuar
+  interpretável pelo shell.
+
+### Conflitos com terceiros
+
+Atribuições de `DOTNET_ROOT` fora do bloco são procuradas nos perfis, em
+`~/.zshenv`, em `~/.config/fish/config.fish`, em `/etc/environment`, em
+`/etc/profile` e em `/etc/profile.d/*.sh`. Um exemplo é o bloco
+`# BEGIN ANSIBLE USER DOTNET`. Valores literais, `$HOME`, `${HOME}` e `~` são
+avaliados; qualquer outra expansão conta como valor diferente.
+
+| Situação | `--env-conflict fail` (padrão) | `override` | `skip` |
+| --- | --- | --- | --- |
+| Mesmo valor efetivo | Aplica normalmente | Aplica | Aplica |
+| Valor diferente | Código `6`, nada alterado; no `install`, antes do download | Aplica e move o bloco para o fim dos perfis | Não altera nada; aviso e código `0` |
+
+Arquivos de terceiros são apenas lidos; links quebrados neles são ignorados.
+
+### Verificação
+
+Depois de aplicar, a CLI abre um shell de login novo (o `$SHELL` do usuário ou,
+na ausência, o de `/etc/passwd`), com ambiente mínimo e prazo de 20 s, para
+confirmar que `dotnet` resolve para a raiz configurada. Se resolver para outro
+lugar, ou se houver `dotnet` do sistema em `/usr/bin`, a CLI emite um aviso. O
+shell atual não muda: use o comando `. <env.sh>` impresso ao final.
+
+### Saída JSON do `env`
+
+```json
+{
+  "action": "apply",
+  "environment": {
+    "dotnetRoot": "/home/usuario/.dotnet",
+    "pathEntries": ["/home/usuario/.dotnet", "/home/usuario/.dotnet/tools"],
+    "status": "applied",
+    "script": "/home/usuario/.config/dotnetscope/env.sh",
+    "changedFiles": ["/home/usuario/.config/dotnetscope/env.sh", "/home/usuario/.profile"],
+    "backups": [],
+    "conflicts": [],
+    "loginShell": { "shell": "/bin/bash", "dotnet": "/home/usuario/.dotnet/dotnet", "dotnetRoot": "/home/usuario/.dotnet", "matches": true }
+  }
+}
+```
+
+Valores de `status`:
+
+- `applied`;
+- `unchanged`;
+- `planned` (`--dry-run`);
+- `skipped` (`--env-conflict skip`);
+- `removed` (`env remove`);
+- no `install`, também `disabled` (`--configure-env false`) e `notApplied`
+  (validação do host falhou).
+
+O objeto `environment` da saída JSON do `install` tem o mesmo formato.
 
 ## Manifesto de instalações
 
@@ -245,7 +359,7 @@ nunca é sobrescrito: a instalação é desfeita e a CLI retorna código `1`.
 | `3` | Canal, versão ou artefato inexistente para o RID; plataforma ainda não suportada pelo `install`. |
 | `4` | Falha de rede, metadata indisponível ou malformado, ou ausente no cache com `--offline`. |
 | `5` | Integridade: origem fora da allowlist (metadata, redirect ou arquivo resolvido), SHA-512 divergente ou arquivo recusado na extração. |
-| `6` | Conflito: outra operação em andamento na raiz ou item existente com tipo incompatível. |
+| `6` | Conflito: outra operação em andamento, item existente com tipo incompatível, `DOTNET_ROOT` de terceiros com outro valor, bloco malformado, perfil não UTF-8 ou alterado durante a operação. |
 | `7` | Privilégio inadequado: escopo user como root ou `--install-dir` em local do sistema ou de outro usuário. |
 | `8` | Instalação gravada, mas a validação falhou com dependências nativas ausentes. |
 | `130` | Cancelado pelo usuário (Ctrl+C ou confirmação recusada). |

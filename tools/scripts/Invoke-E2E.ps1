@@ -92,6 +92,14 @@ if ($containerEngine -notin @('docker', 'podman') -or $null -eq (Get-Command $co
     exit 2
 }
 
+# Um tz configurado no containers.conf do Podman monta /etc/localtime e quebra o pos-instalacao do tzdata.
+$timezoneOverride = $null
+if ($containerEngine -eq 'podman') {
+    $timezoneOverride = Join-Path ([IO.Path]::GetTempPath()) "dotnetscope-e2e-$([Guid]::NewGuid().ToString('N')).conf"
+    Set-Content -LiteralPath $timezoneOverride -Value "[containers]`ntz = `"`""
+    $env:CONTAINERS_CONF_OVERRIDE = $timezoneOverride
+}
+
 $failures = @()
 foreach ($name in $Image) {
     Write-Output "`n##### E2E em $name"
@@ -104,6 +112,11 @@ foreach ($name in $Image) {
     if ($LASTEXITCODE -ne 0) {
         $failures += "$name (codigo $LASTEXITCODE)"
     }
+}
+
+if ($null -ne $timezoneOverride) {
+    Remove-Item -LiteralPath $timezoneOverride -Force
+    Remove-Item Env:CONTAINERS_CONF_OVERRIDE
 }
 
 if ($failures.Count -gt 0) {

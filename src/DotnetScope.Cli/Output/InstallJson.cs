@@ -23,8 +23,6 @@ internal sealed record ArtifactJson(string FileName, string Url, string Sha512);
 
 internal sealed record ValidationJson(bool Succeeded, string Detail);
 
-internal sealed record EnvironmentJson(string DotnetRoot, IReadOnlyList<string> PathEntries);
-
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = true,

@@ -6,6 +6,7 @@ using DotnetScope.Core.Installation;
 using DotnetScope.Core.Releases;
 using DotnetScope.Infrastructure.Http;
 using DotnetScope.Infrastructure.Installation;
+using DotnetScope.Infrastructure.UserEnvironment;
 
 namespace DotnetScope.IntegrationTests;
 
@@ -283,6 +284,61 @@ public sealed class InstallFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task Install_ConfigureEnvFalse_MantemPerfisComHashIdentico()
+    {
+        var bashrc = Path.Combine(_home, ".bashrc");
+        await File.WriteAllTextAsync(bashrc, "# usuário\n", TestContext.Current.CancellationToken);
+
+        var result = await RunAsync("install", "sdk", "10.0.402", "--configure-env", "false", "--output", "json");
+
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        Assert.Equal("# usuário\n", await File.ReadAllTextAsync(bashrc, TestContext.Current.CancellationToken));
+        Assert.False(File.Exists(Path.Combine(_home, ".profile")));
+        Assert.False(Directory.Exists(Path.Combine(_home, ".config")));
+        using var json = JsonDocument.Parse(result.Output);
+        Assert.Equal("disabled", json.RootElement.GetProperty("environment").GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task Install_ConflitoDeAmbiente_FalhaAntesDeBaixar()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_home, ".profile"), "export DOTNET_ROOT=/opt/outro\n", TestContext.Current.CancellationToken);
+
+        var result = await RunAsync("install", "sdk", "10.0.402");
+
+        Assert.Equal(ExitCodes.Conflict, result.ExitCode);
+        Assert.Equal(0, DownloadCount());
+        Assert.False(Directory.Exists(Root));
+    }
+
+    [Fact]
+    public async Task Install_ConfiguraAmbientePorPadrao()
+    {
+        var result = await RunAsync("install", "sdk", "10.0.402", "--output", "json");
+
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        using var json = JsonDocument.Parse(result.Output);
+        var environment = json.RootElement.GetProperty("environment");
+        Assert.Equal("applied", environment.GetProperty("status").GetString());
+        Assert.Contains(Path.Combine(_home, ".profile"), environment.GetProperty("changedFiles").EnumerateArray().Select(e => e.GetString()));
+        Assert.Contains("# >>> dotnetscope >>>", await File.ReadAllTextAsync(Path.Combine(_home, ".profile"), TestContext.Current.CancellationToken), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Install_DryRunJaInstalado_NaoSugereScriptInexistente()
+    {
+        await RunAsync("install", "sdk", "10.0.402", "--configure-env", "false");
+
+        var result = await RunAsync("install", "sdk", "10.0.402", "--dry-run");
+
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        Assert.Contains("já está instalado", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Ambiente: seriam alterados", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Para usar nesta sessão", result.Output, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(_home, ".config/dotnetscope/env.sh")));
+    }
+
+    [Fact]
     public async Task Install_InstallDirPersonalizado_UsaDiretorioInformado()
     {
         var custom = Path.Combine(_home, "ferramentas", "dotnet com espaço");
@@ -291,7 +347,8 @@ public sealed class InstallFlowTests : IDisposable
 
         Assert.Equal(ExitCodes.Success, result.ExitCode);
         Assert.True(Directory.Exists(Path.Combine(custom, "sdk/10.0.402")));
-        Assert.Contains($"export DOTNET_ROOT='{custom}'", result.Output, StringComparison.Ordinal);
+        Assert.Contains(". '" + Path.Combine(_home, ".config/dotnetscope/env.sh") + "'", result.Output, StringComparison.Ordinal);
+        Assert.Contains($"export DOTNET_ROOT='{custom}'", await File.ReadAllTextAsync(Path.Combine(_home, ".config/dotnetscope/env.sh"), TestContext.Current.CancellationToken), StringComparison.Ordinal);
     }
 
     public void Dispose()
@@ -369,6 +426,14 @@ public sealed class InstallFlowTests : IDisposable
             HomeDirectory = () => _home,
             FindMissingDependencies = () => _missing,
             Prompt = _prompt,
+            CreateEnvironmentLayout = home => new EnvironmentLayout(
+                home,
+                Path.Combine(home, ".config"),
+                Path.Combine(home, ".local", "state"),
+                IsMacOS: false,
+                FishAvailable: false,
+                SystemFiles: []),
+            ProbeLoginShell = (_, _, _) => Task.FromResult<LoginShellResult?>(null),
         };
 
         var exitCode = await CliApplication.RunAsync(args, services, TestContext.Current.CancellationToken);
