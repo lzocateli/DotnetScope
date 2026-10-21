@@ -67,11 +67,11 @@ public sealed class ArchiveUninstaller(InstallationManifestStore manifest, IDiag
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 if (Directory.Exists(source))
                 {
-                    Directory.Move(source, target);
+                    FileSystemRetry.Run(() => Directory.Move(source, target));
                 }
                 else
                 {
-                    File.Move(source, target);
+                    FileSystemRetry.Run(() => File.Move(source, target));
                 }
 
                 moved.Add(leaf);
@@ -103,7 +103,7 @@ public sealed class ArchiveUninstaller(InstallationManifestStore manifest, IDiag
         bool force)
     {
         var primary = DotnetLayout.PrimaryPath(component, version);
-        var sameRoot = records.Where(r => string.Equals(r.Root, root, StringComparison.Ordinal)).ToList();
+        var sameRoot = records.Where(r => InstallLocations.SameRoot(r.Root, root)).ToList();
         var record = sameRoot.FirstOrDefault(r => r.Component == component && r.Version == version.ToString());
         if (record is null)
         {
@@ -156,7 +156,7 @@ public sealed class ArchiveUninstaller(InstallationManifestStore manifest, IDiag
         var result = new List<InstallationRecord>();
         foreach (var record in records)
         {
-            if (string.Equals(record.Root, plan.Root, StringComparison.Ordinal)
+            if (InstallLocations.SameRoot(record.Root, plan.Root)
                 && record.Component == plan.Component
                 && record.Version == plan.Version.ToString())
             {
@@ -164,7 +164,7 @@ public sealed class ArchiveUninstaller(InstallationManifestStore manifest, IDiag
             }
 
             var inherited = plan.Keep
-                .Where(k => string.Equals(record.Root, plan.Root, StringComparison.Ordinal)
+                .Where(k => InstallLocations.SameRoot(record.Root, plan.Root)
                     && record.Paths.Contains(k.Path, StringComparer.Ordinal)
                     && !record.AddedPaths.Contains(k.Path, StringComparer.Ordinal)
                     && k.UsedBy == $"{record.Component.ToName()} {record.Version}")
@@ -190,11 +190,11 @@ public sealed class ArchiveUninstaller(InstallationManifestStore manifest, IDiag
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             if (Directory.Exists(source))
             {
-                Directory.Move(source, target);
+                FileSystemRetry.Run(() => Directory.Move(source, target));
             }
             else if (File.Exists(source))
             {
-                File.Move(source, target);
+                FileSystemRetry.Run(() => File.Move(source, target));
             }
         }
     }

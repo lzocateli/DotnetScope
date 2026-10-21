@@ -4,9 +4,9 @@ CLI Native AOT (`dotnetscope`) para instalar, listar, validar e remover SDKs e
 runtimes .NET nos escopos `user` e `global`, com verificação de integridade,
 extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuário.
 
-> **Estado:** em desenvolvimento (fase F6). Release atual:
+> **Estado:** em desenvolvimento (fase F7). Release atual:
 > [v0.1.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.1.0).
-> Implementado em Linux, escopo user: `list --available|--installed`,
+> Implementado em Linux e Windows, escopo user: `list --available|--installed`,
 > `install` (inclusive `--archive` e `--from-global-json`), `uninstall`, `env` e
 > `doctor` ([referência da CLI](docs/cli.md)). O restante
 > descrito abaixo é planejado; consulte o
@@ -35,8 +35,8 @@ Para instalar uma versão específica, use `--version 0.1.0` (`install.sh`) ou
 `-Version 0.1.0` (`install.ps1`). Também é possível baixar o pacote
 `dotnetscope-<rid>.tar.gz`/`.zip` da [página de releases](https://github.com/lzocateli/DotnetScope/releases)
 e conferir a atestação de proveniência com
-`gh attestation verify <arquivo> --repo lzocateli/DotnetScope`. No Windows e no
-macOS, os comandos de instalação de SDK chegam nas fases F6 e F8.
+`gh attestation verify <arquivo> --repo lzocateli/DotnetScope`. No macOS, os
+comandos de instalação de SDK chegam na fase F8.
 
 Atrás de proxy HTTP, prefira `curl`: o `wget` do BusyBox (Alpine) não usa
 `CONNECT` para HTTPS e costuma ser recusado pelo proxy.
@@ -62,16 +62,20 @@ dotnetscope uninstall sdk 10.0.402                # preserva o que outras instal
 dotnetscope doctor --repair                       # recupera operações interrompidas
 ```
 
+No Windows, a raiz padrão é `%LOCALAPPDATA%\Microsoft\dotnet` e o ambiente vai
+para as variáveis do usuário (`HKCU\Environment`), valendo em terminais novos:
+
+```powershell
+dotnetscope install sdk lts --yes                 # zip oficial, DOTNET_ROOT e Path do usuário
+dotnetscope env show | Out-String | Invoke-Expression   # somente para a sessão atual
+dotnetscope env remove                            # restaura os valores anteriores do registro
+```
+
 ## Uso planejado
 
 ```bash
-dotnetscope install sdk 10.0.400                      # escopo user, configura o ambiente
-dotnetscope install SDK-10.0.400 --configure-env false # só imprime as instruções
-dotnetscope install runtime 10.0 --scope global        # requer terminal elevado
-dotnetscope list --installed
-dotnetscope uninstall sdk 10.0.400
-dotnetscope env show --shell bash
-dotnetscope doctor
+dotnetscope install runtime 10.0 --scope global        # requer terminal elevado (F7)
+dotnetscope install sdk lts                            # macOS, escopo user (F8)
 ```
 
 `--configure-env` tem padrão `true`: a CLI grava um bloco gerenciado
@@ -98,6 +102,15 @@ Blocos e instalações de terceiros nunca são sobrescritos.
 
 - Pacotes de release (Native AOT por RID, `SHA256SUMS`) e testes dos
   instaladores: veja o [processo de release](docs/release.md).
+
+- No Windows e no macOS, build, testes e AOT rodam no host com o SDK do
+  `global.json` (`-Native`; não executa `dotnet format`). O E2E do Windows altera
+  o registro e só roda em runner efêmero do GitHub
+  (`tools/scripts/Invoke-WindowsE2E.ps1`):
+
+  ```powershell
+  pwsh ./tools/scripts/Invoke-Validation.ps1 -Native -Aot
+  ```
 
 - Instale o hook obrigatório de detecção de secrets (requer PowerShell 7 e
   Docker ou Podman):

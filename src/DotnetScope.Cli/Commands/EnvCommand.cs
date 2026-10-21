@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Text.Json;
 using DotnetScope.Cli.Output;
 using DotnetScope.Core;
+using DotnetScope.Core.Installation;
 using DotnetScope.Core.UserEnvironment;
 using DotnetScope.Infrastructure.Installation;
 using DotnetScope.Infrastructure.UserEnvironment;
@@ -12,7 +13,7 @@ internal static class EnvCommand
 {
     public static Command Build(CliServices services)
     {
-        var command = new Command("env", "Mostra, aplica ou remove DOTNET_ROOT e PATH nos perfis do usuário");
+        var command = new Command("env", "Mostra, aplica ou remove DOTNET_ROOT e PATH nos perfis do usuário (registro no Windows)");
         command.Subcommands.Add(BuildShow(services));
         command.Subcommands.Add(BuildApply(services));
         command.Subcommands.Add(BuildRemove(services));
@@ -21,11 +22,16 @@ internal static class EnvCommand
 
     private static Command BuildShow(CliServices services)
     {
-        var shell = new Option<string?>("--shell") { Description = "posix (sh, bash, zsh) ou fish; padrão: shell de $SHELL" };
-        shell.AcceptOnlyFromAmong("posix", "sh", "bash", "zsh", "fish");
+        var shell = new Option<string?>("--shell")
+        {
+            Description = "posix (sh, bash, zsh), fish, pwsh (powershell) ou cmd; padrão: shell de $SHELL, ou pwsh no Windows",
+        };
+        shell.AcceptOnlyFromAmong("posix", "sh", "bash", "zsh", "fish", "pwsh", "powershell", "cmd");
         var installDir = InstallDirOption();
         var telemetry = TelemetryOption();
-        var command = new Command("show", "Imprime o script de ambiente, por exemplo para eval \"$(dotnetscope env show)\"")
+        var command = new Command(
+            "show",
+            "Imprime o script de ambiente da sessão: eval \"$(dotnetscope env show)\" ou, no PowerShell, dotnetscope env show | Out-String | Invoke-Expression")
         {
             shell, installDir, telemetry,
         };
@@ -35,8 +41,15 @@ internal static class EnvCommand
             async (_, _) =>
             {
                 var (target, _) = ResolveTarget(services, parseResult.GetValue(installDir), parseResult.GetValue(telemetry), requireHost: false);
-                var kind = parseResult.GetValue(shell) ?? (Path.GetFileName(services.LoginShell() ?? string.Empty) == "fish" ? "fish" : "posix");
-                var script = kind == "fish" ? EnvironmentScripts.RenderFish(target) : EnvironmentScripts.RenderPosix(target);
+                var kind = parseResult.GetValue(shell)
+                    ?? (services.IsWindowsTarget ? "pwsh" : Path.GetFileName(services.LoginShell() ?? string.Empty) == "fish" ? "fish" : "posix");
+                var script = kind switch
+                {
+                    "fish" => EnvironmentScripts.RenderFish(target),
+                    "pwsh" or "powershell" => EnvironmentScripts.RenderPowerShell(target),
+                    "cmd" => EnvironmentScripts.RenderCmd(target),
+                    _ => EnvironmentScripts.RenderPosix(target),
+                };
                 await services.Output.WriteAsync(script).ConfigureAwait(false);
                 return ExitCodes.Success;
             },
@@ -50,9 +63,11 @@ internal static class EnvCommand
         var conflict = ConflictOption();
         var telemetry = TelemetryOption();
         var yes = new Option<bool>("--yes", "-y") { Description = "Confirma a edição de perfis que são links simbólicos" };
-        var dryRun = new Option<bool>("--dry-run") { Description = "Mostra os arquivos que seriam alterados sem gravar" };
+        var dryRun = new Option<bool>("--dry-run") { Description = "Mostra os perfis ou variáveis que seriam alterados sem gravar" };
         var output = OutputOption();
-        var command = new Command("apply", "Configura DOTNET_ROOT e PATH nos perfis do usuário (bloco gerenciado, idempotente)")
+        var command = new Command(
+            "apply",
+            "Configura DOTNET_ROOT e PATH nos perfis do usuário (bloco gerenciado) ou em HKCU\\Environment no Windows; idempotente")
         {
             installDir, conflict, telemetry, yes, dryRun, output,
         };
@@ -62,7 +77,7 @@ internal static class EnvCommand
             async (diagnostics, ct) =>
             {
                 var (target, home) = ResolveTarget(services, parseResult.GetValue(installDir), parseResult.GetValue(telemetry), requireHost: true);
-                var configurator = new UnixEnvironmentConfigurator(services.CreateEnvironmentLayout(home));
+                var configurator = services.CreateEnvironmentConfigurator(home);
                 var plan = EnvironmentSetup.Plan(
                     services, configurator, target, ParsePolicy(parseResult.GetValue(conflict)), parseResult.GetValue(yes), parseResult.GetValue(dryRun));
                 EnvironmentOutcome outcome;
@@ -71,8 +86,8 @@ internal static class EnvCommand
                     outcome = new EnvironmentOutcome(
                         target,
                         plan.Skipped ? "skipped" : plan.HasChanges ? "planned" : "unchanged",
-                        configurator.Layout.EnvScript,
-                        plan.Profiles.Select(p => p.Path).Concat(plan.Files.Select(f => f.Path)).ToList(),
+                        configurator.SessionScript,
+                        plan.ChangedTargets,
                         [],
                         plan.Conflicts,
                         null);
@@ -91,9 +106,11 @@ internal static class EnvCommand
 
     private static Command BuildRemove(CliServices services)
     {
-        var dryRun = new Option<bool>("--dry-run") { Description = "Mostra os arquivos que seriam alterados sem gravar" };
+        var dryRun = new Option<bool>("--dry-run") { Description = "Mostra os perfis ou variáveis que seriam alterados sem gravar" };
         var output = OutputOption();
-        var command = new Command("remove", "Remove o bloco do dotnetscope dos perfis e os scripts de ambiente, preservando o restante")
+        var command = new Command(
+            "remove",
+            "Remove o bloco do dotnetscope dos perfis (ou o que ele gravou no registro do Windows), preservando o restante")
         {
             dryRun, output,
         };
@@ -102,11 +119,10 @@ internal static class EnvCommand
             parseResult.GetValue(CliApplication.VerboseOption),
             async (diagnostics, ct) =>
             {
-                EnsureSupported(services);
                 var home = services.HomeDirectory();
-                var configurator = new UnixEnvironmentConfigurator(services.CreateEnvironmentLayout(home));
+                var configurator = services.CreateEnvironmentConfigurator(home);
                 var plan = configurator.PlanRemove();
-                var changed = plan.Profiles.Select(p => p.Path).Concat(plan.Files.Select(f => f.Path)).ToList();
+                var changed = plan.ChangedTargets;
                 IReadOnlyList<string> backups = [];
                 if (!parseResult.GetValue(dryRun))
                 {
@@ -158,16 +174,8 @@ internal static class EnvCommand
     internal static Option<bool> TelemetryOption() =>
         new("--telemetry-optout") { Description = "Inclui DOTNET_CLI_TELEMETRY_OPTOUT=1 no ambiente" };
 
-    internal static void EnsureSupported(CliServices services)
-    {
-        if (services.DetectRid().StartsWith("win-", StringComparison.Ordinal))
-        {
-            throw new DotnetScopeException(ExitCodes.NotFound, "A configuração de ambiente no Windows ainda não está disponível nesta versão.");
-        }
-    }
-
     private static Option<string?> InstallDirOption() =>
-        new("--install-dir") { Description = "Raiz .NET (padrão: ~/.dotnet)", HelpName = "diretório" };
+        new("--install-dir") { Description = "Raiz .NET (padrão: ~/.dotnet; no Windows, %LOCALAPPDATA%\\Microsoft\\dotnet)", HelpName = "diretório" };
 
     private static Option<string> OutputOption()
     {
@@ -178,10 +186,9 @@ internal static class EnvCommand
 
     private static (EnvironmentTarget Target, string Home) ResolveTarget(CliServices services, string? installDir, bool telemetry, bool requireHost)
     {
-        EnsureSupported(services);
         var home = services.HomeDirectory();
         var root = InstallLocations.ValidateUserRoot(installDir ?? InstallLocations.DefaultUserRoot(home), home);
-        if (requireHost && !File.Exists(Path.Combine(root, "dotnet")))
+        if (requireHost && !File.Exists(Path.Combine(root, DotnetLayout.HostExecutable(OperatingSystem.IsWindows()))))
         {
             throw new DotnetScopeException(ExitCodes.NotFound, $"Não há dotnet em {root}; instale um componente antes ou informe --install-dir.");
         }
@@ -204,6 +211,6 @@ internal static class EnvCommand
             return;
         }
 
-        await EnvironmentSetup.WriteTextAsync(services.Output, outcome, home).ConfigureAwait(false);
+        await EnvironmentSetup.WriteTextAsync(services.Output, outcome, home, services.IsWindowsTarget).ConfigureAwait(false);
     }
 }

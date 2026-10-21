@@ -39,3 +39,24 @@ jobs:
           path: artifacts/aot/linux-x64/dotnetscope
           if-no-files-found: error
           retention-days: 7
+
+  validate-windows:
+    name: Build, tests and Native AOT (win-x64)
+    runs-on: windows-2025
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Validate on host
+        shell: pwsh
+        run: ./tools/scripts/Invoke-Validation.ps1 -Native -Aot

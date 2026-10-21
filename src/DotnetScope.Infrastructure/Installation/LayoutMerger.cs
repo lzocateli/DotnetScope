@@ -70,11 +70,11 @@ internal sealed class LayoutMerger
                 var source = Path.Combine(_source, leaf);
                 if (Directory.Exists(source))
                 {
-                    Directory.Move(source, target);
+                    FileSystemRetry.Run(() => Directory.Move(source, target));
                 }
                 else
                 {
-                    File.Move(source, target, overwrite: false);
+                    FileSystemRetry.Run(() => File.Move(source, target, overwrite: false));
                 }
 
                 _added.Add(leaf);
@@ -109,7 +109,7 @@ internal sealed class LayoutMerger
         _added.Clear();
         if (_hostBackup is not null)
         {
-            File.Move(_hostBackup, Path.Combine(_root, _hostName), overwrite: true);
+            FileSystemRetry.Run(() => File.Move(_hostBackup, Path.Combine(_root, _hostName), overwrite: true));
             _hostBackup = null;
         }
 
@@ -221,11 +221,11 @@ internal sealed class LayoutMerger
     {
         Directory.CreateDirectory(_backupDirectory);
         var backup = Path.Combine(_backupDirectory, _hostName);
-        File.Move(target, backup, overwrite: false);
+        FileSystemRetry.Run(() => File.Move(target, backup, overwrite: false));
         _hostBackup = backup;
         WriteJournal();
         BeforeMove?.Invoke(_hostName);
-        File.Move(Path.Combine(_source, _hostName), target, overwrite: false);
+        FileSystemRetry.Run(() => File.Move(Path.Combine(_source, _hostName), target, overwrite: false));
     }
 
     private void WriteJournal()

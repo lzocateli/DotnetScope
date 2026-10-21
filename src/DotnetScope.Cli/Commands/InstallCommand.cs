@@ -35,7 +35,7 @@ internal static class InstallCommand
         scope.AcceptOnlyFromAmong("user", "global");
         var installDir = new Option<string?>("--install-dir")
         {
-            Description = "Raiz da instalação (padrão: ~/.dotnet)",
+            Description = "Raiz da instalação (padrão: ~/.dotnet; no Windows, %LOCALAPPDATA%\\Microsoft\\dotnet)",
             HelpName = "diretório",
         };
         var prerelease = new Option<bool>("--prerelease") { Description = "Permite versões preview/RC" };
@@ -45,14 +45,14 @@ internal static class InstallCommand
         var allowRoot = new Option<bool>("--allow-root") { Description = "Permite o escopo user executando como root" };
         var configureEnv = new Option<bool>("--configure-env")
         {
-            Description = "Configura DOTNET_ROOT e PATH nos perfis do usuário (true|false)",
+            Description = "Configura DOTNET_ROOT e PATH nos perfis do usuário ou no registro do Windows (true|false)",
             DefaultValueFactory = _ => true,
         };
         var envConflict = EnvCommand.ConflictOption();
         var telemetry = EnvCommand.TelemetryOption();
         var archive = new Option<string?>("--archive")
         {
-            Description = "Instala a partir de um arquivo .tar.gz local, sem consultar o metadata (exige versão exata e --sha512)",
+            Description = "Instala a partir de um arquivo local (.tar.gz; .zip no Windows), sem consultar o metadata (exige versão exata e --sha512)",
             HelpName = "arquivo",
         };
         var sha512 = new Option<string?>("--sha512") { Description = "SHA-512 esperado do arquivo de --archive", HelpName = "hash" };
@@ -117,11 +117,6 @@ internal static class InstallCommand
         }
 
         var rid = services.DetectRid();
-        if (rid.StartsWith("win-", StringComparison.Ordinal))
-        {
-            throw new DotnetScopeException(ExitCodes.NotFound, "A instalação no Windows ainda não está disponível nesta versão.");
-        }
-
         ValidateSourceOptions(options);
         if (services.IsRoot() && !options.AllowRoot)
         {
@@ -144,11 +139,11 @@ internal static class InstallCommand
 
         // O ambiente é planejado antes de baixar: conflito de DOTNET_ROOT falha sem alterar nada.
         var target = EnvironmentSetup.CreateTarget(root, home, options.TelemetryOptOut);
-        UnixEnvironmentConfigurator? configurator = null;
+        IUserEnvironmentConfigurator? configurator = null;
         EnvironmentPlan? environmentPlan = null;
         if (options.ConfigureEnv)
         {
-            configurator = new UnixEnvironmentConfigurator(services.CreateEnvironmentLayout(home));
+            configurator = services.CreateEnvironmentConfigurator(home);
             environmentPlan = EnvironmentSetup.Plan(services, configurator, target, options.EnvConflict, options.Yes, options.DryRun);
         }
 
@@ -160,8 +155,8 @@ internal static class InstallCommand
                 : new EnvironmentOutcome(
                     target,
                     environmentPlan.Skipped ? "skipped" : environmentPlan.HasChanges ? "planned" : "unchanged",
-                    configurator!.Layout.EnvScript,
-                    environmentPlan.Profiles.Select(p => p.Path).Concat(environmentPlan.Files.Select(f => f.Path)).ToList(),
+                    configurator!.SessionScript,
+                    environmentPlan.ChangedTargets,
                     [],
                     environmentPlan.Conflicts,
                     null);
@@ -259,9 +254,10 @@ internal static class InstallCommand
                 throw new DotnetScopeException(ExitCodes.NotFound, $"Arquivo não encontrado: {path}.");
             }
 
-            if (!path.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
+            var extension = rid.StartsWith("win-", StringComparison.Ordinal) ? ".zip" : ".tar.gz";
+            if (!path.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
             {
-                throw new DotnetScopeException(ExitCodes.Usage, $"--archive aceita somente .tar.gz nesta plataforma: {path}.");
+                throw new DotnetScopeException(ExitCodes.Usage, $"--archive aceita somente {extension} nesta plataforma: {path}.");
             }
 
             var file = new ReleaseFile(Path.GetFileName(path), rid, new Uri(path), options.Sha512!.ToLowerInvariant(), IsTrusted: true);
@@ -415,11 +411,11 @@ internal static class InstallCommand
         if (environment.Status == "disabled")
         {
             await services.Output.WriteLineAsync("Ambiente não alterado (--configure-env false).").ConfigureAwait(false);
-            await EnvironmentSetup.WriteManualInstructionsAsync(services.Output, environment.Target).ConfigureAwait(false);
+            await EnvironmentSetup.WriteManualInstructionsAsync(services.Output, environment.Target, services.IsWindowsTarget).ConfigureAwait(false);
         }
         else if (environment.Status != "notApplied")
         {
-            await EnvironmentSetup.WriteTextAsync(services.Output, environment, home).ConfigureAwait(false);
+            await EnvironmentSetup.WriteTextAsync(services.Output, environment, home, services.IsWindowsTarget).ConfigureAwait(false);
         }
     }
 

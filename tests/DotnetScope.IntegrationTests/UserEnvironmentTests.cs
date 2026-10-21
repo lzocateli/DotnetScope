@@ -12,7 +12,9 @@ namespace DotnetScope.IntegrationTests;
 /// Configuração de ambiente com perfis reais em um home temporário, scripts executados por sh/bash reais e a CLI
 /// em processo. Nunca toca no perfil de quem executa os testes.
 /// </summary>
+// Usa host de teste em shell script, modos Unix e /bin/sh; filtrado no Windows por Platform=Unix.
 [UnsupportedOSPlatform("windows")]
+[Trait("Platform", "Unix")]
 public sealed class UserEnvironmentTests : IDisposable
 {
     private const string OriginalBashrc = "# bashrc do usuário\nalias ll='ls -l'";

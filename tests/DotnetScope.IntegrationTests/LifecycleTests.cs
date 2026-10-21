@@ -10,7 +10,9 @@ using DotnetScope.Infrastructure.UserEnvironment;
 namespace DotnetScope.IntegrationTests;
 
 /// <summary>Ciclo de vida da F4: uninstall, list --installed, doctor, --archive e --from-global-json.</summary>
+// Usa host de teste em shell script, modos Unix e /bin/sh; filtrado no Windows por Platform=Unix.
 [UnsupportedOSPlatform("windows")]
+[Trait("Platform", "Unix")]
 public sealed class LifecycleTests : IDisposable
 {
     private readonly LocalMetadataServer _server = new();

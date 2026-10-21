@@ -24,7 +24,7 @@ public sealed class InstallationManifestStore
         ArgumentNullException.ThrowIfNull(record);
         return UpdateAsync(
             records => records
-                .Where(r => !(string.Equals(r.Root, record.Root, StringComparison.Ordinal) && r.Component == record.Component && r.Version == record.Version))
+                .Where(r => !(InstallLocations.SameRoot(r.Root, record.Root) && r.Component == record.Component && r.Version == record.Version))
                 .Append(record)
                 .ToList(),
             diagnostics,

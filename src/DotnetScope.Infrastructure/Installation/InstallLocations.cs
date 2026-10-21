@@ -24,6 +24,10 @@ public static class InstallLocations
     public static bool IsInstalled(string root, ComponentKind component, DotnetVersion version) =>
         LayoutMerger.EntryExists(Path.Combine(root, DotnetLayout.PrimaryPath(component, version)));
 
+    /// <summary>Compara raízes normalizadas; no Windows, sem distinção de maiúsculas.</summary>
+    public static bool SameRoot(string left, string right) =>
+        string.Equals(left, right, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
     public static string DefaultUserRoot(string home) =>
         OperatingSystem.IsWindows()
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "dotnet")
@@ -41,19 +45,114 @@ public static class InstallLocations
             throw new DotnetScopeException(ExitCodes.Usage, $"--install-dir precisa ser um caminho absoluto: {path}.");
         }
 
-        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
-        if (!OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows())
         {
-            var normalizedHome = Path.TrimEndingDirectorySeparator(Path.GetFullPath(home));
-            EnsureAllowed(normalized, normalized, normalizedHome);
-            var resolved = ResolveLinks(normalized);
-            if (!string.Equals(resolved, normalized, StringComparison.Ordinal))
-            {
-                EnsureAllowed(normalized, resolved, ResolveLinks(normalizedHome));
-            }
+            return ValidateWindowsRoot(path, home);
+        }
+
+        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        var normalizedHome = Path.TrimEndingDirectorySeparator(Path.GetFullPath(home));
+        EnsureAllowed(normalized, normalized, normalizedHome);
+        var resolved = ResolveLinks(normalized);
+        if (!string.Equals(resolved, normalized, StringComparison.Ordinal))
+        {
+            EnsureAllowed(normalized, resolved, ResolveLinks(normalizedHome));
         }
 
         return normalized;
+    }
+
+    private static string ValidateWindowsRoot(string path, string home)
+    {
+        if (path.StartsWith(@"\\", StringComparison.Ordinal) || path.StartsWith("//", StringComparison.Ordinal))
+        {
+            throw Denied(path, "um caminho de rede ou de dispositivo");
+        }
+
+        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        var normalizedHome = Path.TrimEndingDirectorySeparator(Path.GetFullPath(home));
+        var protectedDirectories = new[]
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                Environment.GetEnvironmentVariable("ProgramW6432") ?? string.Empty,
+            }
+            .Where(d => d.Length > 0)
+            .Select(Path.TrimEndingDirectorySeparator)
+            .ToList();
+        var usersDirectory = Path.GetDirectoryName(normalizedHome);
+
+        EnsureAllowedWindows(path, normalized, normalizedHome, protectedDirectories, usersDirectory);
+        var resolved = ResolveWindowsLinks(normalized);
+        if (!string.Equals(resolved, normalized, StringComparison.OrdinalIgnoreCase))
+        {
+            EnsureAllowedWindows(path, resolved, ResolveWindowsLinks(normalizedHome), protectedDirectories, usersDirectory);
+        }
+
+        return normalized;
+    }
+
+    /// <summary>
+    /// Regras do Windows sobre caminhos já normalizados (sem barra final): recusa a raiz de uma unidade, o próprio
+    /// perfil, diretórios do sistema e de programas e perfis de outros usuários; subdiretórios do perfil são permitidos.
+    /// </summary>
+    internal static void EnsureAllowedWindows(
+        string requested,
+        string path,
+        string home,
+        IReadOnlyList<string> protectedDirectories,
+        string? usersDirectory)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(protectedDirectories);
+        if ((path.Length <= 3 && path.Length >= 2 && path[1] == ':') || string.Equals(path, home, StringComparison.OrdinalIgnoreCase))
+        {
+            throw Denied(requested, "a raiz de uma unidade ou o próprio perfil do usuário");
+        }
+
+        if (IsUnderWindows(path, home))
+        {
+            return;
+        }
+
+        if (protectedDirectories.Any(directory => IsUnderWindows(path, directory)))
+        {
+            throw Denied(requested, "um diretório do sistema ou de programas");
+        }
+
+        if (usersDirectory is not null && IsUnderWindows(path, usersDirectory))
+        {
+            throw Denied(requested, "o perfil de outro usuário");
+        }
+    }
+
+    private static bool IsUnderWindows(string path, string prefix)
+    {
+        var trimmed = prefix.TrimEnd('\\');
+        return string.Equals(path, trimmed, StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith(trimmed + "\\", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Resolve junções e links simbólicos componente a componente até o ancestral existente mais profundo.</summary>
+    private static string ResolveWindowsLinks(string path)
+    {
+        var root = Path.GetPathRoot(path) ?? string.Empty;
+        var current = root;
+        foreach (var segment in path[root.Length..].Split('\\', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var next = Path.Combine(current, segment);
+            var info = new DirectoryInfo(next);
+            if (info.LinkTarget is not null)
+            {
+                next = Path.TrimEndingDirectorySeparator(Path.GetFullPath(info.ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? next));
+            }
+
+            current = next;
+        }
+
+        return Path.TrimEndingDirectorySeparator(current);
     }
 
     private static void EnsureAllowed(string requested, string path, string home)

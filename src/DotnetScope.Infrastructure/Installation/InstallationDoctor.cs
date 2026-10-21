@@ -95,7 +95,7 @@ public sealed class InstallationDoctor(InstallationManifestStore manifest, IDiag
             return new DoctorFinding("invalid-journal", FindingSeverity.Error, $"{journalPath} contém caminhos inválidos; nada foi alterado.", false, false);
         }
 
-        var records = manifest.Read().Where(r => string.Equals(r.Root, root, StringComparison.Ordinal)).ToList();
+        var records = manifest.Read().Where(r => InstallLocations.SameRoot(r.Root, root)).ToList();
         var recorded = journal.Component is not null && records.Any(r => r.Component.ToName() == journal.Component && r.Version == journal.Version);
 
         if (journal.Operation == "uninstall")
@@ -130,7 +130,7 @@ public sealed class InstallationDoctor(InstallationManifestStore manifest, IDiag
             {
                 if (hostMissing && File.Exists(hostBackup))
                 {
-                    File.Move(hostBackup, Path.Combine(root, host));
+                    FileSystemRetry.Run(() => File.Move(hostBackup, Path.Combine(root, host)));
                 }
 
                 Directory.Delete(staging, recursive: true);
@@ -159,7 +159,7 @@ public sealed class InstallationDoctor(InstallationManifestStore manifest, IDiag
             // O backup do host é sempre o caminho derivado do staging, nunca um caminho lido do journal.
             if (File.Exists(hostBackup))
             {
-                File.Move(hostBackup, Path.Combine(root, host), overwrite: true);
+                FileSystemRetry.Run(() => File.Move(hostBackup, Path.Combine(root, host), overwrite: true));
             }
 
             ArchiveUninstaller.RemoveEmptyContainers(root, orphaned);
@@ -180,9 +180,9 @@ public sealed class InstallationDoctor(InstallationManifestStore manifest, IDiag
     /// </summary>
     private static List<InstallationRecord> RemoveStale(IReadOnlyList<InstallationRecord> all, List<InstallationRecord> stale, string root)
     {
-        static bool Same(InstallationRecord a, InstallationRecord b) => a.Root == b.Root && a.Component == b.Component && a.Version == b.Version;
+        static bool Same(InstallationRecord a, InstallationRecord b) => InstallLocations.SameRoot(a.Root, b.Root) && a.Component == b.Component && a.Version == b.Version;
         var remaining = all.Where(r => !stale.Any(x => Same(x, r))).ToList();
-        foreach (var record in stale.Where(r => string.Equals(r.Root, root, StringComparison.Ordinal)))
+        foreach (var record in stale.Where(r => InstallLocations.SameRoot(r.Root, root)))
         {
             foreach (var leaf in record.AddedPaths)
             {
@@ -192,7 +192,7 @@ public sealed class InstallationDoctor(InstallationManifestStore manifest, IDiag
                     continue;
                 }
 
-                var index = remaining.FindIndex(r => r.Root == root && r.Paths.Contains(leaf, StringComparer.Ordinal));
+                var index = remaining.FindIndex(r => InstallLocations.SameRoot(r.Root, root) && r.Paths.Contains(leaf, StringComparer.Ordinal));
                 if (index >= 0)
                 {
                     if (!remaining[index].AddedPaths.Contains(leaf, StringComparer.Ordinal))
@@ -219,7 +219,7 @@ public sealed class InstallationDoctor(InstallationManifestStore manifest, IDiag
     private async Task<IEnumerable<DoctorFinding>> CheckRecordsAsync(string root, bool repair, CancellationToken cancellationToken)
     {
         var findings = new List<DoctorFinding>();
-        var records = manifest.Read().Where(r => string.Equals(r.Root, root, StringComparison.Ordinal)).ToList();
+        var records = manifest.Read().Where(r => InstallLocations.SameRoot(r.Root, root)).ToList();
         var stale = new List<InstallationRecord>();
         foreach (var record in records)
         {

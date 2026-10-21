@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Valida o DotnetScope em container: restore, formatacao, build, testes e, opcionalmente, Native AOT.
+Valida o DotnetScope em container (ou no host com -Native): restore, formatacao, build, testes e, opcionalmente, Native AOT.
 
 .DESCRIPTION
 Executa a mesma validacao usada no CI dentro da imagem fixada
@@ -10,12 +10,22 @@ dotnet build -c Release, dotnet test -c Release e, com -Aot, instala clang e
 zlib1g-dev no container, publica linux-x64 com PublishAot e executa
 'dotnetscope --version' como smoke test.
 
+Com -Native, as mesmas etapas (exceto dotnet format, que roda no container)
+executam no host com o SDK do global.json. E o modo usado no Windows e no
+macOS, onde nao ha imagem de container com a toolchain nativa; -Aot publica o
+RID do host em artifacts/aot/<rid>. Os testes de registro do Windows usam uma
+subchave isolada em HKCU\Software e nunca alteram HKCU\Environment.
+
 O container roda como root: no Podman rootless isso corresponde ao usuario do
 host; no Docker, os diretorios gerados (bin, obj, artifacts) sao devolvidos ao
 usuario do host ao final. O script nunca altera perfil, registro ou PATH do host.
 
 .PARAMETER Aot
-Inclui a publicacao Native AOT linux-x64 e o smoke test do binario.
+Inclui a publicacao Native AOT (linux-x64 no container; RID do host com -Native) e o smoke test do binario.
+
+.PARAMETER Native
+Executa no host, sem container. Exige o SDK do global.json e, com -Aot, a
+toolchain nativa (Visual Studio C++ no Windows, Xcode no macOS).
 
 .PARAMETER Engine
 Engine de container: docker ou podman. Padrao: DOTNETSCOPE_CONTAINER_ENGINE,
@@ -30,6 +40,9 @@ Aceita somente --help; outros valores retornam erro de uso.
 .EXAMPLE
 ./tools/scripts/Invoke-Validation.ps1 -Aot -Engine podman
 
+.EXAMPLE
+./tools/scripts/Invoke-Validation.ps1 -Native -Aot
+
 .NOTES
 Requer PowerShell 7+, Docker ou Podman e acesso a NuGet (e ao APT do Ubuntu com -Aot).
 Pacotes NuGet ficam em cache em artifacts/.nuget, ignorado pelo Git.
@@ -42,6 +55,8 @@ Codigos: 0 sucesso; 2 erro de uso; demais valores vem da etapa que falhou.
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [switch] $Aot,
+
+    [switch] $Native,
 
     [ValidateSet('docker', 'podman')]
     [string] $Engine,
@@ -64,6 +79,60 @@ if ($RemainingArguments.Count -gt 0) {
 
 $image = 'docker.io/lzocateli/dotnet-sdk:10.0.402-noble-v1'
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+
+if ($Native) {
+    if (-not [string]::IsNullOrWhiteSpace($Engine)) {
+        [Console]::Error.WriteLine('-Native e -Engine sao mutuamente exclusivos. Use --help.')
+        exit 2
+    }
+
+    if ($null -eq (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+        [Console]::Error.WriteLine('dotnet nao foi encontrado no PATH (instale o SDK do global.json). Use --help.')
+        exit 2
+    }
+
+    $os = if ($IsWindows) { 'win' } elseif ($IsMacOS) { 'osx' } else { 'linux' }
+    $arch = if ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [Runtime.InteropServices.Architecture]::Arm64) { 'arm64' } else { 'x64' }
+    $hostRid = "$os-$arch"
+    $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+    $env:DOTNET_NOLOGO = '1'
+
+    $nativeSteps = @(
+        , @('restore', 'DotnetScope.slnx')
+        , @('build', 'DotnetScope.slnx', '--configuration', 'Release', '--no-restore')
+        , @('test', 'DotnetScope.slnx', '--configuration', 'Release', '--no-build')
+    )
+    if ($IsWindows) {
+        # Classes com host de teste em shell script e modos Unix; o Windows e coberto pelo E2E e por testes proprios.
+        $nativeSteps[2] += @('--filter', 'Platform!=Unix')
+    }
+    if ($Aot) {
+        $nativeSteps += , @('publish', 'src/DotnetScope.Cli/DotnetScope.Cli.csproj', '--configuration', 'Release', '--runtime', $hostRid, '--output', "artifacts/aot/$hostRid")
+    }
+
+    Write-Output "Validando no host ($hostRid) com $(& dotnet --version)$(if ($Aot) { ' (com Native AOT)' })"
+    Push-Location $repositoryRoot
+    try {
+        foreach ($step in $nativeSteps) {
+            Write-Output "`n> dotnet $($step -join ' ')"
+            & dotnet @step
+            if ($LASTEXITCODE -ne 0) {
+                exit $LASTEXITCODE
+            }
+        }
+
+        if ($Aot) {
+            $binary = Join-Path $repositoryRoot "artifacts/aot/$hostRid/dotnetscope$(if ($IsWindows) { '.exe' })"
+            & $binary --version
+            exit $LASTEXITCODE
+        }
+    }
+    finally {
+        Pop-Location
+    }
+
+    exit 0
+}
 
 $containerEngine = $Engine
 if ([string]::IsNullOrWhiteSpace($containerEngine)) {

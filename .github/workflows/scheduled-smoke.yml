@@ -66,3 +66,28 @@ jobs:
       - name: Install SDK and runtime in clean containers
         shell: pwsh
         run: ./tools/scripts/Invoke-E2E.ps1 -Engine docker
+
+  install-e2e-windows:
+    name: Install E2E (Windows user scope, ephemeral runner)
+    runs-on: windows-2025
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Build Native AOT binary
+        shell: pwsh
+        run: ./tools/scripts/Invoke-Validation.ps1 -Native -Aot
+
+      - name: Install SDK and runtime, verify registry and revert
+        shell: pwsh
+        run: ./tools/scripts/Invoke-WindowsE2E.ps1

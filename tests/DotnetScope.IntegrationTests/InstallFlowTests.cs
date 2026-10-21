@@ -14,7 +14,9 @@ namespace DotnetScope.IntegrationTests;
 /// Fluxo completo de install em processo: HTTP local real, filesystem real e host sintético executável em shell.
 /// O fluxo do Windows (zip e registro) é coberto em fase própria.
 /// </summary>
+// Usa host de teste em shell script, modos Unix e /bin/sh; filtrado no Windows por Platform=Unix.
 [UnsupportedOSPlatform("windows")]
+[Trait("Platform", "Unix")]
 public sealed class InstallFlowTests : IDisposable
 {
     private readonly LocalMetadataServer _server = new();

@@ -28,6 +28,9 @@ internal sealed record CliServices(
 
     public Func<string, EnvironmentLayout> CreateEnvironmentLayout { get; init; } = EnvironmentLayout.CreateDefault;
 
+    /// <summary>Configurador do registro do Windows (substituído por um store em memória nos testes).</summary>
+    public Func<string, WindowsEnvironmentConfigurator> CreateWindowsEnvironment { get; init; } = WindowsEnvironmentConfigurator.CreateDefault;
+
     public Func<InstallationManifestStore> CreateManifestStore { get; init; } = InstallationManifestStore.CreateDefault;
 
     public Func<IReadOnlyList<string>> SystemRoots { get; init; } = InstalledInventory.SystemRoots;
@@ -39,6 +42,12 @@ internal sealed record CliServices(
     public Func<string?> LoginShell { get; init; } = LoginShellProbe.DefaultShell;
 
     public Func<string?, string, CancellationToken, Task<LoginShellResult?>> ProbeLoginShell { get; init; } = LoginShellProbe.ProbeAsync;
+
+    /// <summary>Indica se o RID alvo é Windows (registro, zip e <c>dotnet.exe</c>).</summary>
+    public bool IsWindowsTarget => DetectRid().StartsWith("win-", StringComparison.Ordinal);
+
+    public IUserEnvironmentConfigurator CreateEnvironmentConfigurator(string home) =>
+        IsWindowsTarget ? CreateWindowsEnvironment(home) : new UnixEnvironmentConfigurator(CreateEnvironmentLayout(home));
 
     public static CliServices CreateDefault(TextWriter output, TextWriter error) =>
         new(output, error, ReleaseMetadataClient.CreateOfficial, PlatformDetector.DetectRid);

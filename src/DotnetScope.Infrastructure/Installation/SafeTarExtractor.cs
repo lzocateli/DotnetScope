@@ -8,7 +8,7 @@ namespace DotnetScope.Infrastructure.Installation;
 /// Extrai <c>.tar.gz</c> aceitando somente diretórios e arquivos regulares com caminhos relativos confinados ao destino.
 /// Links, dispositivos, FIFOs, caminhos absolutos, <c>..</c>, nomes duplicados e arquivos acima dos limites são recusados.
 /// </summary>
-internal sealed class SafeTarExtractor(long maxTotalBytes = 8L * 1024 * 1024 * 1024, int maxEntries = 200_000)
+internal sealed class SafeTarExtractor(long maxTotalBytes = 8L * 1024 * 1024 * 1024, int maxEntries = 200_000) : IArchiveExtractor
 {
     private const UnixFileMode PermissionBits =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute

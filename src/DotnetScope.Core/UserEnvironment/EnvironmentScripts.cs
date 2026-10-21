@@ -50,6 +50,59 @@ public static class EnvironmentScripts
         return string.Join('\n', lines) + "\n";
     }
 
+    /// <summary>
+    /// Script do PowerShell para a sessão atual, idempotente; use com <c>| Out-String | Invoke-Expression</c>. O separador
+    /// do PATH vem de <c>[IO.Path]::PathSeparator</c> para funcionar também no pwsh do Linux e do macOS.
+    /// </summary>
+    public static string RenderPowerShell(EnvironmentTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        var lines = new List<string> { Header, $"$env:DOTNET_ROOT = {ShellQuoting.PowerShell(target.DotnetRoot)}" };
+        foreach (var directory in new[] { target.ToolsDirectory, target.DotnetRoot })
+        {
+            var quoted = ShellQuoting.PowerShell(directory);
+            lines.Add(
+                $"if (-not (($env:PATH -split [IO.Path]::PathSeparator) -contains {quoted})) "
+                + $"{{ $env:PATH = {quoted} + [IO.Path]::PathSeparator + $env:PATH }}");
+        }
+
+        if (target.TelemetryOptOut)
+        {
+            lines.Add("$env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'");
+        }
+
+        return string.Join('\n', lines) + "\n";
+    }
+
+    /// <summary>
+    /// Comandos do cmd.exe para a sessão atual. Caminhos com <c>%</c>, <c>!</c>, <c>^</c> ou <c>"</c> não são
+    /// representáveis com segurança e geram erro.
+    /// </summary>
+    public static string RenderCmd(EnvironmentTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        foreach (var path in new[] { target.DotnetRoot, target.ToolsDirectory })
+        {
+            if (path.IndexOfAny(['%', '!', '^', '"']) >= 0)
+            {
+                throw new DotnetScopeException(ExitCodes.Usage, $"O caminho {path} não pode ser representado no cmd.exe; use --shell pwsh.");
+            }
+        }
+
+        var lines = new List<string>
+        {
+            "rem Gerado por dotnetscope; não edite. Use `dotnetscope env apply` para configurar novos terminais.",
+            $"set \"DOTNET_ROOT={target.DotnetRoot}\"",
+            $"set \"PATH={target.DotnetRoot};{target.ToolsDirectory};%PATH%\"",
+        };
+        if (target.TelemetryOptOut)
+        {
+            lines.Add("set \"DOTNET_CLI_TELEMETRY_OPTOUT=1\"");
+        }
+
+        return string.Join("\r\n", lines) + "\r\n";
+    }
+
     /// <summary>Linhas do bloco de perfil que carrega o script POSIX (sem marcador de fim de linha final).</summary>
     /// <param name="scriptExpression">Caminho do script já em forma de expressão shell segura.</param>
     public static IReadOnlyList<string> ProfileBlock(string scriptExpression) =>

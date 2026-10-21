@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Text.Json;
 using DotnetScope.Cli.Output;
 using DotnetScope.Core;
+using DotnetScope.Core.UserEnvironment;
 using DotnetScope.Infrastructure.Installation;
 using DotnetScope.Infrastructure.UserEnvironment;
 
@@ -25,7 +26,6 @@ internal static class DoctorCommand
             parseResult.GetValue(CliApplication.VerboseOption),
             async (diagnostics, ct) =>
             {
-                EnvCommand.EnsureSupported(services);
                 var home = services.HomeDirectory();
                 var manifest = services.CreateManifestStore();
                 var roots = new List<string> { InstallLocations.DefaultUserRoot(home) };
@@ -78,6 +78,11 @@ internal static class DoctorCommand
     private static async Task<IEnumerable<DoctorFinding>> CheckEnvironmentAsync(CliServices services, string home, CancellationToken cancellationToken)
     {
         var findings = new List<DoctorFinding>();
+        if (services.IsWindowsTarget)
+        {
+            return CheckWindowsEnvironment(services.CreateWindowsEnvironment(home));
+        }
+
         var configurator = new UnixEnvironmentConfigurator(services.CreateEnvironmentLayout(home));
         var root = configurator.ConfiguredRoot();
         var blocks = configurator.PlanRemove().Profiles.Count;
@@ -119,6 +124,47 @@ internal static class DoctorCommand
                 "login-shell",
                 FindingSeverity.Warning,
                 $"Em um shell de login novo ({probe.Shell}), dotnet resolve para {probe.ResolvedDotnet ?? "nada"} em vez de {root}.",
+                false,
+                false));
+        }
+
+        return findings;
+    }
+
+    private static List<DoctorFinding> CheckWindowsEnvironment(WindowsEnvironmentConfigurator configurator)
+    {
+        var findings = new List<DoctorFinding>();
+        if (configurator.ConfiguredRoot() is not { } root)
+        {
+            return findings;
+        }
+
+        if (!File.Exists(Path.Combine(root, "dotnet.exe")))
+        {
+            findings.Add(new DoctorFinding("env-root-missing", FindingSeverity.Warning, $"DOTNET_ROOT aponta para {root}, que não tem dotnet.exe.", false, false));
+            return findings;
+        }
+
+        if (configurator.PlanApply(new EnvironmentTarget(root, Path.Combine(configurator.Home, ".dotnet", "tools"), false), EnvConflictPolicy.Override)
+            .ChangedVariables.Any(v => v.Name != "DOTNET_CLI_TELEMETRY_OPTOUT"))
+        {
+            findings.Add(new DoctorFinding(
+                "env-registry-changed",
+                FindingSeverity.Warning,
+                $"DOTNET_ROOT ou Path em {configurator.Store.Location} não correspondem mais à configuração do dotnetscope; execute dotnetscope env apply.",
+                false,
+                false));
+        }
+
+        var (verification, shadowed) = configurator.VerifyNewProcess(root);
+        if (verification.Matches != true)
+        {
+            findings.Add(new DoctorFinding(
+                "new-terminal",
+                FindingSeverity.Warning,
+                shadowed
+                    ? $"Em um terminal novo, dotnet resolve para {verification.ResolvedDotnet}, que vem do Path da máquina e tem precedência sobre {root}."
+                    : $"Em um terminal novo, dotnet resolve para {verification.ResolvedDotnet ?? "nada"} em vez de {root}.",
                 false,
                 false));
         }

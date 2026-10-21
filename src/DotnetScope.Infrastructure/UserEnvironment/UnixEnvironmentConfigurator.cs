@@ -11,11 +11,15 @@ namespace DotnetScope.Infrastructure.UserEnvironment;
 /// Configura <c>DOTNET_ROOT</c> e <c>PATH</c> nos perfis do usuário (Linux e macOS): escreve o script
 /// <c>env.sh</c> (e o do fish) e um bloco delimitado nos perfis, com backup, gravação atômica e remoção exata.
 /// </summary>
-public sealed class UnixEnvironmentConfigurator(EnvironmentLayout layout)
+public sealed class UnixEnvironmentConfigurator(EnvironmentLayout layout) : IUserEnvironmentConfigurator
 {
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     public EnvironmentLayout Layout { get; } = layout;
+
+    public string Home => Layout.Home;
+
+    public string? SessionScript => Layout.EnvScript;
 
     /// <summary>
     /// Planeja a configuração sem gravar nada. Conflitos com a política <see cref="EnvConflictPolicy.Fail"/> lançam
@@ -31,7 +35,7 @@ public sealed class UnixEnvironmentConfigurator(EnvironmentLayout layout)
 
         if (conflicts.Count > 0 && policy == EnvConflictPolicy.Fail)
         {
-            var details = string.Join("; ", conflicts.Select(c => $"{c.File}:{c.Line} DOTNET_ROOT={c.RawValue}"));
+            var details = string.Join("; ", conflicts.Select(c => $"{c.Location} DOTNET_ROOT={c.RawValue}"));
             throw new DotnetScopeException(
                 ExitCodes.Conflict,
                 $"DOTNET_ROOT já é definido com outro valor ({details}). Nada foi alterado; use --env-conflict override ou skip.");

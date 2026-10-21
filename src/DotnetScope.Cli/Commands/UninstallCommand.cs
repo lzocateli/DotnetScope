@@ -15,7 +15,7 @@ internal static class UninstallCommand
     {
         var component = new Argument<string>("componente") { Description = "sdk, runtime, aspnetcore ou windowsdesktop; ou SDK-10.0.400" };
         var version = new Argument<string?>("versão") { Description = "Versão exata instalada", Arity = ArgumentArity.ZeroOrOne };
-        var installDir = new Option<string?>("--install-dir") { Description = "Raiz da instalação (padrão: ~/.dotnet)", HelpName = "diretório" };
+        var installDir = new Option<string?>("--install-dir") { Description = "Raiz da instalação (padrão: ~/.dotnet; no Windows, %LOCALAPPDATA%\\Microsoft\\dotnet)", HelpName = "diretório" };
         var force = new Option<bool>("--force") { Description = "Remove a pasta do componente mesmo se instalada por outra ferramenta" };
         var keepEnv = new Option<bool>("--keep-env") { Description = "Mantém DOTNET_ROOT/PATH nos perfis mesmo sem instalações gerenciadas" };
         var dryRun = new Option<bool>("--dry-run") { Description = "Mostra o que seria removido sem alterar nada" };
@@ -32,7 +32,6 @@ internal static class UninstallCommand
             parseResult.GetValue(CliApplication.VerboseOption),
             async (diagnostics, ct) =>
             {
-                EnvCommand.EnsureSupported(services);
                 if (services.IsRoot() && !parseResult.GetValue(allowRoot))
                 {
                     throw new DotnetScopeException(ExitCodes.Privilege, "O escopo user não deve ser executado como root; use --allow-root.");
@@ -48,11 +47,11 @@ internal static class UninstallCommand
                     .ConfigureAwait(false);
 
                 var environment = "unchanged";
-                if (!dry && !parseResult.GetValue(keepEnv) && !manifest.Read().Any(r => string.Equals(r.Root, root, StringComparison.Ordinal)))
+                if (!dry && !parseResult.GetValue(keepEnv) && !manifest.Read().Any(r => InstallLocations.SameRoot(r.Root, root)))
                 {
                     // Seção 4.3, regra 10: sem instalações gerenciadas na raiz, o bloco de ambiente que aponta para ela sai.
-                    var configurator = new UnixEnvironmentConfigurator(services.CreateEnvironmentLayout(home));
-                    if (configurator.ConfiguredRoot() == root)
+                    var configurator = services.CreateEnvironmentConfigurator(home);
+                    if (configurator.ConfiguredRoot() is { } configured && InstallLocations.SameRoot(configured, root))
                     {
                         await configurator.ExecuteAsync(configurator.PlanRemove(), diagnostics, ct).ConfigureAwait(false);
                         environment = "removed";

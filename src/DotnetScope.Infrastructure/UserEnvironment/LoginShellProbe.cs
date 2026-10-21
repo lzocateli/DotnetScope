@@ -3,7 +3,8 @@ using System.Diagnostics;
 namespace DotnetScope.Infrastructure.UserEnvironment;
 
 /// <summary>Resultado da verificação em um shell de login novo.</summary>
-public sealed record LoginShellResult(string Shell, string? ResolvedDotnet, string? DotnetRoot);
+/// <param name="Matches">Resultado da comparação já feito pela origem (Windows); nulo para comparar pelo diretório.</param>
+public sealed record LoginShellResult(string Shell, string? ResolvedDotnet, string? DotnetRoot, bool? Matches = null);
 
 /// <summary>
 /// Abre um shell de login novo, com ambiente mínimo, para confirmar que <c>dotnet</c> resolve para a raiz

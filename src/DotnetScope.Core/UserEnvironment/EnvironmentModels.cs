@@ -13,4 +13,8 @@ public enum EnvConflictPolicy
 
 /// <summary>Atribuição de <c>DOTNET_ROOT</c> feita fora do bloco do DotnetScope.</summary>
 /// <param name="ResolvedValue">Valor normalizado, ou nulo quando depende de expansões que não podem ser avaliadas.</param>
-public sealed record ThirdPartyAssignment(string File, int Line, string RawValue, string? ResolvedValue);
+public sealed record ThirdPartyAssignment(string File, int Line, string RawValue, string? ResolvedValue)
+{
+    /// <summary>Arquivo e linha, ou somente a origem quando não há linha (por exemplo, um valor do registro).</summary>
+    public string Location => Line > 0 ? $"{File}:{Line}" : File;
+}

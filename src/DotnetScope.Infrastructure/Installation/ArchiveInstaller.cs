@@ -19,20 +19,20 @@ public sealed class ArchiveInstaller : IArtifactInstaller
     private readonly InstallationManifestStore _manifest;
     private readonly IDiagnosticSink _diagnostics;
     private readonly IProgress<DownloadProgress>? _progress;
-    private readonly SafeTarExtractor _extractor;
+    private readonly IArchiveExtractor? _extractor;
 
     internal ArchiveInstaller(
         TrustedHttpFetcher fetcher,
         InstallationManifestStore manifest,
         IDiagnosticSink diagnostics,
         IProgress<DownloadProgress>? progress,
-        SafeTarExtractor? extractor = null)
+        IArchiveExtractor? extractor = null)
     {
         _fetcher = fetcher;
         _manifest = manifest;
         _diagnostics = diagnostics;
         _progress = progress;
-        _extractor = extractor ?? new SafeTarExtractor();
+        _extractor = extractor;
     }
 
     public static ArchiveInstaller CreateOfficial(IDiagnosticSink diagnostics, IProgress<DownloadProgress>? progress) =>
@@ -50,12 +50,7 @@ public sealed class ArchiveInstaller : IArtifactInstaller
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(artifact);
-        if (!artifact.File.Name.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new DotnetScopeException(
-                ExitCodes.NotFound,
-                $"A instalação de {artifact.File.Name} ainda não é suportada nesta plataforma.");
-        }
+        var extractor = _extractor ?? CreateExtractor(artifact.File.Name);
 
         Directory.CreateDirectory(root);
         using var installLock = await InstallLock.AcquireAsync(
@@ -94,7 +89,7 @@ public sealed class ArchiveInstaller : IArtifactInstaller
             _diagnostics.Verbose("SHA-512 verificado");
 
             var extracted = Path.Combine(staging, "extract");
-            await _extractor.ExtractAsync(archive, extracted, cancellationToken).ConfigureAwait(false);
+            await extractor.ExtractAsync(archive, extracted, cancellationToken).ConfigureAwait(false);
             File.Delete(archive);
             if (!LayoutMerger.EntryExists(Path.Combine(extracted, primary)))
             {
@@ -144,6 +139,12 @@ public sealed class ArchiveInstaller : IArtifactInstaller
     }
 
     public void Dispose() => _fetcher.Dispose();
+
+    /// <summary>Extrator pelo formato do arquivo: <c>.tar.gz</c> (Linux e macOS) ou <c>.zip</c> (Windows).</summary>
+    internal static IArchiveExtractor CreateExtractor(string fileName) =>
+        fileName.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase) ? new SafeTarExtractor()
+        : fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? new SafeZipExtractor()
+        : throw new DotnetScopeException(ExitCodes.NotFound, $"Formato de arquivo não suportado: {fileName}.");
 
     private static async Task CopyPrivateAsync(string source, string destination, CancellationToken cancellationToken)
     {

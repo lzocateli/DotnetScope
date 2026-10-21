@@ -10,6 +10,19 @@ public static class ShellQuoting
         return "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
     }
 
+    /// <summary>Aspas simples do PowerShell; aspas simples internas (inclusive as tipográficas) são duplicadas.</summary>
+    public static string PowerShell(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        var escaped = value
+            .Replace("'", "''", StringComparison.Ordinal)
+            .Replace("\u2018", "\u2018\u2018", StringComparison.Ordinal)
+            .Replace("\u2019", "\u2019\u2019", StringComparison.Ordinal)
+            .Replace("\u201A", "\u201A\u201A", StringComparison.Ordinal)
+            .Replace("\u201B", "\u201B\u201B", StringComparison.Ordinal);
+        return "'" + escaped + "'";
+    }
+
     /// <summary>Aspas simples do fish; dentro delas somente <c>\\</c> e <c>\'</c> são escapes.</summary>
     public static string Fish(string value)
     {

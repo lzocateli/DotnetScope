@@ -321,7 +321,7 @@ runners efêmeros.
 | F3 | `--configure-env` (Linux/macOS), `env show\|apply\|remove`, detecção de conflito | casos obrigatórios da seção 12 verdes | concluída (E2E bash/zsh/fish em Ubuntu 24.04 e Fedora 41) |
 | F4 | `uninstall`, `list --installed`, `doctor [--repair]`, `install --archive <arquivo> --sha512 <hash>` (seção 7), `install --from-global-json [caminho]` (seção 3, com `rollForward`) | reversão completa e origem correta na listagem; instalação offline verificada; versão resolvida conforme `global.json` | concluída (E2E com remoção completa em Ubuntu 24.04 e Fedora 41) |
 | F5 | Publicação AOT multi-RID, `install.sh`/`install.ps1`, release no GitHub | binários rodam sem .NET; checksums publicados | concluída (smoke em Ubuntu 18.04, Rocky 8, Debian 12, Alpine 3.17/3.24 e runners Windows/macOS; [processo de release](release.md)) |
-| F6 | Windows user (zip + registro + `WM_SETTINGCHANGE`) | `dotnet` disponível em novo terminal; reversão do registro | pendente |
+| F6 | Windows user (zip + registro + `WM_SETTINGCHANGE`) | `dotnet` disponível em novo terminal; reversão do registro | concluída (testes nativos e E2E em `windows-2025`; [referência](cli.md#windows)) |
 | F7 | Global: `apt`, instalador Windows, `.pkg`, instalação por arquivo (D4), `--install-deps` | instalação elevada validada; mistura com pacote recusada | pendente |
 | F8 | macOS user | E2E em runner macOS | pendente |
 | F9 | Assinatura, SBOM, Authenticode/`.pkg`, `.deb`/APT, winget, Homebrew | artefatos assinados e verificáveis | pendente |
@@ -371,7 +371,24 @@ com milestone, e é entregue por PR com as evidências do template.
     porque o Windows PowerShell 5.1 pode não habilitá-lo por padrão;
   - smoke de `linux-arm64` e `win-arm64` roda em runners Arm64 nativos
     (`ubuntu-24.04-arm`, `windows-11-arm`), sem emulação.
-- A configuração de ambiente no Windows (registro) continua na F6 e a global
+- Decisões de implementação da F6:
+  - o `Path` do usuário recebe a raiz e as ferramentas no início, preservando o
+    tipo existente; com `REG_EXPAND_SZ`, as ferramentas usam
+    `%USERPROFILE%\.dotnet\tools`, a forma que o SDK grava na primeira execução,
+    para que ele não duplique a entrada;
+  - o estado (`%LOCALAPPDATA%\dotnetscope\env-state.json`) registra as entradas
+    acrescentadas e os valores anteriores; a remoção restaura valor e tipo e não
+    toca em valores que o usuário alterou depois;
+  - um `dotnet` no `Path` da máquina tem precedência sobre o do usuário no
+    Windows e não enxerga os SDKs da raiz do usuário: a CLI e o `doctor` avisam,
+    sem tratar como conflito (código `0`), porque corrigir exige administrador;
+  - `list --installed` inclui `%ProgramFiles%\dotnet` e classifica como
+    `package` a raiz registrada pelo instalador oficial;
+  - a execução como administrador não é recusada no escopo user do Windows;
+  - os testes de registro usam uma subchave isolada em `HKCU\Software`; o E2E
+    real, que altera `HKCU\Environment` e o `Path` da máquina, só roda em runner
+    efêmero do GitHub.
+- A configuração de ambiente global
   (`/etc/profile.d`, `/etc/paths.d`, `install_location`) na F7.
 - O metadata oficial publica assinatura PKCS#7 destacada (campo `signature`,
   arquivo `.p7s`). Hoje a confiança no metadata vem do TLS e da allowlist;

@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using System.Runtime.Versioning;
 using DotnetScope.Core.Installation;
 using DotnetScope.Core.Releases;
 using DotnetScope.Core.Versions;
+using Microsoft.Win32;
 
 namespace DotnetScope.Infrastructure.Installation;
 
@@ -37,7 +39,12 @@ public static class InstalledInventory
     /// <summary>Raízes do sistema verificadas além da raiz do usuário e das registradas no manifesto.</summary>
     public static IReadOnlyList<string> SystemRoots() =>
         OperatingSystem.IsWindows()
-            ? []
+            ? new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 }
+                .Select(Environment.GetFolderPath)
+                .Where(folder => folder.Length > 0)
+                .Select(folder => Path.Combine(folder, "dotnet"))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
             : ["/usr/lib/dotnet", "/usr/share/dotnet", "/usr/local/share/dotnet", "/usr/lib64/dotnet", "/opt/dotnet"];
 
     public static IReadOnlyList<InstalledComponent> Scan(
@@ -48,10 +55,12 @@ public static class InstalledInventory
     {
         ArgumentNullException.ThrowIfNull(records);
         var result = new List<InstalledComponent>();
-        foreach (var root in roots.Select(r => Path.TrimEndingDirectorySeparator(Path.GetFullPath(r))).Distinct(StringComparer.Ordinal))
+        var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        foreach (var root in roots.Select(r => Path.TrimEndingDirectorySeparator(Path.GetFullPath(r))).Distinct(comparer))
         {
-            var rootRecords = records.Where(r => string.Equals(r.Root, root, StringComparison.Ordinal)).ToList();
-            var external = IsUnder(root, home) || !File.Exists(Path.Combine(root, "dotnet")) || !isPackageManaged(root)
+            var rootRecords = records.Where(r => InstallLocations.SameRoot(r.Root, root)).ToList();
+            var host = Path.Combine(root, DotnetLayout.HostExecutable(OperatingSystem.IsWindows()));
+            var external = IsUnder(root, home) || !File.Exists(host) || !isPackageManaged(root)
                 ? InstallOrigin.External
                 : InstallOrigin.Package;
             foreach (var (component, directory) in Layout)
@@ -88,7 +97,7 @@ public static class InstalledInventory
             foreach (var record in rootRecords)
             {
                 if (DotnetVersion.TryParse(record.Version, out var version)
-                    && !result.Any(c => c.Root == root && c.Component == record.Component && c.Version == version))
+                    && !result.Any(c => InstallLocations.SameRoot(c.Root, root) && c.Component == record.Component && c.Version == version))
                 {
                     result.Add(new InstalledComponent(record.Component, version, root, InstallOrigin.DotnetScope, null, Present: false));
                 }
@@ -102,9 +111,17 @@ public static class InstalledInventory
             .ToList();
     }
 
-    /// <summary>Consulta dpkg ou rpm para saber se o host da raiz pertence a um pacote do sistema.</summary>
+    /// <summary>
+    /// Consulta dpkg ou rpm (Linux) ou o registro do instalador oficial (Windows) para saber se a raiz pertence a um
+    /// pacote do sistema.
+    /// </summary>
     public static bool IsPackageManaged(string root)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            return IsWindowsInstallerRoot(root);
+        }
+
         if (!OperatingSystem.IsLinux())
         {
             return false;
@@ -138,9 +155,32 @@ public static class InstalledInventory
         return false;
     }
 
+    /// <summary>
+    /// O instalador oficial registra a raiz em <c>HKLM\SOFTWARE\dotnet\Setup\InstalledVersions\&lt;arch&gt;\InstallLocation</c>,
+    /// lido pelo host na visão de 32 bits do registro.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static bool IsWindowsInstallerRoot(string root)
+    {
+        using var hive = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32);
+        foreach (var architecture in new[] { "x64", "x86", "arm64" })
+        {
+            using var key = hive.OpenSubKey($@"SOFTWARE\dotnet\Setup\InstalledVersions\{architecture}", writable: false);
+            if (key?.GetValue("InstallLocation") is string location
+                && location.Length > 0
+                && InstallLocations.SameRoot(Path.TrimEndingDirectorySeparator(location), root))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsUnder(string path, string home)
     {
-        var prefix = home.TrimEnd('/') + "/";
-        return path.StartsWith(prefix, StringComparison.Ordinal);
+        var separator = Path.DirectorySeparatorChar;
+        var prefix = home.TrimEnd(separator) + separator;
+        return path.StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
     }
 }

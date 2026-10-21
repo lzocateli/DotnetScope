@@ -20,14 +20,33 @@ public sealed record ProfileChange(
 /// <summary>Arquivo próprio do DotnetScope a gravar (conteúdo) ou remover (nulo).</summary>
 public sealed record OwnedFileChange(string Path, string? Content);
 
+/// <summary>Alteração planejada em uma variável de ambiente persistente (registro do usuário no Windows).</summary>
+/// <param name="Display">Localização legível, por exemplo <c>HKCU\Environment\Path</c>.</param>
+/// <param name="OldValue">Valor bruto atual (sem expansão), ou nulo se a variável não existe.</param>
+/// <param name="NewValue">Valor bruto a gravar, ou nulo para remover a variável.</param>
+public sealed record VariableChange(
+    string Name,
+    string Display,
+    string? OldValue,
+    bool OldExpandable,
+    string? NewValue,
+    bool NewExpandable);
+
 public sealed record EnvironmentPlan(
     EnvironmentTarget? Target,
     IReadOnlyList<ProfileChange> Profiles,
     IReadOnlyList<OwnedFileChange> Files,
     IReadOnlyList<ThirdPartyAssignment> Conflicts,
-    bool Skipped)
+    bool Skipped,
+    IReadOnlyList<VariableChange>? Variables = null)
 {
-    public bool HasChanges => Profiles.Count > 0 || Files.Count > 0;
+    public IReadOnlyList<VariableChange> ChangedVariables => Variables ?? [];
+
+    public bool HasChanges => Profiles.Count > 0 || Files.Count > 0 || ChangedVariables.Count > 0;
+
+    /// <summary>Perfis, arquivos próprios e variáveis que o plano altera, na forma exibida ao usuário.</summary>
+    public IReadOnlyList<string> ChangedTargets =>
+        Profiles.Select(p => p.Path).Concat(Files.Select(f => f.Path)).Concat(ChangedVariables.Select(v => v.Display)).ToList();
 
     public bool RequiresConfirmation => Profiles.Any(p => p.IsSymlink);
 }

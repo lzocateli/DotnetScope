@@ -27,7 +27,7 @@ internal static class ListCommand
         };
         component.AcceptOnlyFromAmong([.. ComponentKindNames.All]);
         var installed = new Option<bool>("--installed") { Description = "Lista os componentes instalados e sua origem (dotnetscope, external ou package)" };
-        var installDir = new Option<string?>("--install-dir") { Description = "Raiz do usuário em --installed (padrão: ~/.dotnet)", HelpName = "diretório" };
+        var installDir = new Option<string?>("--install-dir") { Description = "Raiz do usuário em --installed (padrão: ~/.dotnet; no Windows, %LOCALAPPDATA%\\Microsoft\\dotnet)", HelpName = "diretório" };
         var prerelease = new Option<bool>("--prerelease") { Description = "Inclui versões e canais preview/RC" };
         var offline = new Option<bool>("--offline") { Description = "Usa somente o metadata em cache" };
         var output = new Option<string>("--output")
@@ -94,7 +94,6 @@ internal static class ListCommand
 
     private static async Task<int> ListInstalledAsync(CliServices services, string? installDir, bool json)
     {
-        EnvCommand.EnsureSupported(services);
         var home = services.HomeDirectory();
         var userRoot = InstallLocations.ValidateUserRoot(installDir ?? InstallLocations.DefaultUserRoot(home), home);
         var records = services.CreateManifestStore().Read();

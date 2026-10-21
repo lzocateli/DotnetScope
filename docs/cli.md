@@ -99,29 +99,29 @@ chaves são contrato estável: remoções ou renomeações são mudanças incomp
 ## `install`
 
 Instala um SDK ou runtime a partir do arquivo compactado oficial, verificado por
-SHA-512. Nesta versão funciona no escopo `user` no Linux e no macOS (`.tar.gz`);
-o escopo `global` e o Windows retornam erro.
+SHA-512. Nesta versão funciona no escopo `user`: `.tar.gz` no Linux e no macOS e
+`.zip` no Windows. O escopo `global` retorna erro.
 
 ```text
 dotnetscope install <componente> <versão> [opções]
 dotnetscope install <COMPONENTE-versão> [opções]
-dotnetscope install <componente> <versão-exata> --archive <arquivo.tar.gz> --sha512 <hash> [opções]
+dotnetscope install <componente> <versão-exata> --archive <arquivo.tar.gz|arquivo.zip> --sha512 <hash> [opções]
 dotnetscope install --from-global-json [caminho] [opções]
 ```
 
 | Opção | Padrão | Descrição |
 | --- | --- | --- |
 | `--scope` | `user` | `user`; `global` ainda não está disponível (código `2`). |
-| `--install-dir` | `~/.dotnet` | Raiz da instalação; precisa ser absoluta. |
+| `--install-dir` | `~/.dotnet` (Windows: `%LOCALAPPDATA%\Microsoft\dotnet`) | Raiz da instalação; precisa ser absoluta. |
 | `--prerelease` | `false` | Permite versões preview/RC. |
 | `--offline` | `false` | Resolve a versão somente com o metadata em cache (o download continua exigindo rede). |
 | `--dry-run` | `false` | Mostra o plano sem criar diretórios nem baixar. |
 | `-y`, `--yes` | `false` | Confirma quando a versão resolvida difere da informada (canal, feature band, `lts`, `sts`). |
 | `--allow-root` | `false` | Permite o escopo user executando como root. |
-| `--archive` | — | Instala offline a partir de um `.tar.gz` local, sem consultar o metadata. Exige versão exata e `--sha512`. |
+| `--archive` | — | Instala offline a partir de um `.tar.gz` local (`.zip` no Windows), sem consultar o metadata. Exige versão exata e `--sha512`. |
 | `--sha512` | — | SHA-512 esperado do arquivo de `--archive` (128 caracteres hexadecimais). |
 | `--from-global-json` | — | Instala o SDK exigido por um `global.json`. Aceita arquivo ou diretório; sem valor, procura a partir do diretório atual em direção à raiz. |
-| `--configure-env` | `true` | Configura `DOTNET_ROOT` e `PATH` nos perfis (seção [`env`](#env)); `false` só imprime as instruções. |
+| `--configure-env` | `true` | Configura `DOTNET_ROOT` e `PATH` nos perfis ou, no Windows, em `HKCU\Environment` (seção [`env`](#env)); `false` só imprime as instruções. |
 | `--env-conflict` | `fail` | `fail`, `override` ou `skip` quando terceiros definem outro `DOTNET_ROOT`. |
 | `--telemetry-optout` | `false` | Inclui `DOTNET_CLI_TELEMETRY_OPTOUT=1` no ambiente. |
 | `--output` | `text` | `text` ou `json`. |
@@ -168,6 +168,8 @@ Se a versão escolhida diferir de `sdk.version`, a CLI pede confirmação ou
    recusados com código `7`: `/`, o próprio home, diretórios do sistema (`/usr`,
    `/opt`, `/etc`, `/var` etc.) e o home de outros usuários. Subdiretórios do
    próprio home são sempre aceitos, mesmo quando o home fica em um desses locais.
+   As regras do Windows estão na [seção Windows](#windows); lá a execução como
+   administrador não é recusada.
 3. Com `--configure-env true`, planeja o ambiente antes de baixar: um conflito
    de `DOTNET_ROOT` com a política `fail` retorna código `6` sem alterar nada.
 4. Resolve a versão. Se ela não for exata, pede confirmação no terminal ou exige
@@ -182,11 +184,16 @@ Se a versão escolhida diferir de `sdk.version`, a CLI pede confirmação ou
    transitórias, e verifica o SHA-512 antes de extrair (código `5` se divergir).
 8. Extrai aceitando somente diretórios e arquivos regulares com caminhos
    relativos confinados. Links, dispositivos, caminhos absolutos, `..`, nomes
-   duplicados e arquivos acima dos limites são recusados com código `5`.
+   duplicados e arquivos acima dos limites são recusados com código `5`. No
+   `.zip`, também são recusados letras de unidade, `\`, `:` (fluxos alternativos
+   do NTFS), nomes reservados do Windows (`CON`, `NUL`, `COM1` etc.), segmentos
+   terminados em ponto ou espaço, nomes que diferem só em maiúsculas, entradas
+   criptografadas e tamanhos reais acima do declarado.
 9. Move para a raiz apenas as pastas versionadas e os arquivos ausentes, sem
    substituir nada existente. O executável `dotnet` só é atualizado quando o
    `host/fxr` do arquivo é mais novo que todos os da raiz. Falhas desfazem o que
-   foi movido. Ctrl+C cancela o download e a extração e remove o staging; depois
+   foi movido. No Windows, renomeações bloqueadas por antivírus são repetidas
+   por até 3 s. Ctrl+C cancela o download e a extração e remove o staging; depois
    que a mesclagem começa (operação de milissegundos), ela é concluída.
 10. Registra a instalação no manifesto e valida o host com `dotnet --list-sdks`
     ou `--list-runtimes`.
@@ -236,19 +243,22 @@ arquivo contém, mas já existiam. `validation` é `null` em `--dry-run`.
 
 ## `env`
 
-Configura `DOTNET_ROOT` e `PATH` nos perfis do usuário no Linux e no macOS. O
-`install` executa o mesmo fluxo por padrão (`--configure-env true`).
+Configura `DOTNET_ROOT` e `PATH` nos perfis do usuário no Linux e no macOS e nas
+variáveis do usuário no Windows ([seção Windows](#windows)). O `install` executa
+o mesmo fluxo por padrão (`--configure-env true`).
 
 ```text
-dotnetscope env show   [--shell posix|sh|bash|zsh|fish] [--install-dir <dir>] [--telemetry-optout]
+dotnetscope env show   [--shell posix|sh|bash|zsh|fish|pwsh|powershell|cmd] [--install-dir <dir>] [--telemetry-optout]
 dotnetscope env apply  [--install-dir <dir>] [--env-conflict fail|override|skip] [--telemetry-optout]
                        [-y|--yes] [--dry-run] [--output text|json]
 dotnetscope env remove [--dry-run] [--output text|json]
 ```
 
 - `env show` só imprime o script, sem gravar nada. É útil para a sessão atual:
-  `eval "$(dotnetscope env show)"`.
-- `env apply` exige `dotnet` na raiz (código `3` se não houver).
+  `eval "$(dotnetscope env show)"` ou, no PowerShell (padrão no Windows),
+  `dotnetscope env show | Out-String | Invoke-Expression`. Com `--shell cmd`,
+  caminhos com `%`, `!`, `^` ou `"` são recusados (código `2`).
+- `env apply` exige `dotnet` (`dotnet.exe` no Windows) na raiz (código `3` se não houver).
 - `env remove` retira o bloco e os scripts próprios, restaurando os perfis byte
   a byte. Um perfil que o DotnetScope criou é apagado se ficar vazio.
 
@@ -343,6 +353,55 @@ Valores de `status`:
 
 O objeto `environment` da saída JSON do `install` tem o mesmo formato.
 
+### Windows
+
+No Windows, `env apply` (e o `install` com `--configure-env true`) grava nas
+variáveis persistentes do usuário, em `HKCU\Environment`, e avisa as janelas
+abertas com `WM_SETTINGCHANGE`. `setx` nunca é usado, porque trunca valores em
+1024 caracteres.
+
+| Variável | Conteúdo |
+| --- | --- |
+| `DOTNET_ROOT` | Raiz da instalação (`REG_SZ`). |
+| `Path` | Raiz e diretório de ferramentas acrescentados no início, somente se ausentes. O tipo existente é preservado; um `Path` novo é `REG_EXPAND_SZ`. Com `REG_EXPAND_SZ`, as ferramentas usam `%USERPROFILE%\.dotnet\tools`, a mesma forma que o SDK grava na primeira execução. |
+| `DOTNET_CLI_TELEMETRY_OPTOUT` | `1` com `--telemetry-optout`; sem a opção, um valor gravado antes pelo DotnetScope volta ao anterior. |
+
+Garantias:
+
+- Entradas existentes do `Path` são comparadas expandidas, sem distinção de
+  maiúsculas e sem barra final: nada é duplicado e entradas vazias são mantidas.
+- Antes de gravar, os valores anteriores vão para
+  `%LOCALAPPDATA%\dotnetscope\backups\environment.<data>.json`. O estado em
+  `%LOCALAPPDATA%\dotnetscope\env-state.json` registra o que o DotnetScope
+  acrescentou e os valores anteriores.
+- `env remove` (e o `uninstall` da última instalação gerenciada na raiz) retira
+  do `Path` somente as entradas acrescentadas e restaura `DOTNET_ROOT` e
+  `DOTNET_CLI_TELEMETRY_OPTOUT` ao valor e tipo anteriores. Valores alterados
+  pelo usuário depois disso não são tocados. Um `Path` criado pelo DotnetScope é
+  apagado se ficar vazio.
+- Se uma variável mudar entre o planejamento e a gravação, nada é gravado
+  (código `6`). Um valor de tipo diferente de `REG_SZ`/`REG_EXPAND_SZ` também
+  retorna código `6`.
+- `DOTNET_ROOT` do usuário com outro valor segue a tabela de
+  [conflitos](#conflitos-com-terceiros); o conflito é reportado com
+  `file` = `HKCU\Environment\DOTNET_ROOT` e `line` = `0`.
+- `changedFiles` lista os valores alterados (por exemplo,
+  `HKCU\Environment\Path`) e `script` é `null`.
+
+Verificação: o Windows monta o `Path` de um terminal novo com o `Path` da
+máquina seguido do `Path` do usuário. A CLI faz o mesmo cálculo a partir do
+registro e informa em `loginShell` para onde `dotnet` resolve. Se um `dotnet`
+do `Path` da máquina, como `C:\Program Files\dotnet`, tiver precedência, a CLI
+avisa: o `dotnet.exe` da máquina não enxerga os SDKs da raiz do usuário. Nesse
+caso, remova a entrada do `Path` da máquina (exige administrador). O `doctor`
+reporta a mesma situação (`new-terminal`). Terminais já abertos não mudam; use o
+comando de `env show` impresso ao final.
+
+`--install-dir` no Windows recusa a raiz de uma unidade, o próprio perfil,
+caminhos de rede (`\\servidor\...`), `%WINDIR%`, `%ProgramFiles%`,
+`%ProgramFiles(x86)%`, `%ProgramData%` e perfis de outros usuários, inclusive
+por junção ou link simbólico (código `7`).
+
 ## `list --installed`
 
 ```text
@@ -351,16 +410,18 @@ dotnetscope list --installed [--install-dir <dir>] [--output text|json]
 
 Lista SDKs e runtimes encontrados nas raízes abaixo, com a origem de cada um:
 
-- a raiz do usuário (`~/.dotnet` ou `--install-dir`);
+- a raiz do usuário (`~/.dotnet`, `%LOCALAPPDATA%\Microsoft\dotnet` no Windows,
+  ou `--install-dir`);
 - as raízes registradas no manifesto;
 - as raízes do sistema (`/usr/lib/dotnet`, `/usr/share/dotnet`,
-  `/usr/local/share/dotnet`, `/usr/lib64/dotnet` e `/opt/dotnet`).
+  `/usr/local/share/dotnet`, `/usr/lib64/dotnet` e `/opt/dotnet`; no Windows,
+  `%ProgramFiles%\dotnet` e `%ProgramFiles(x86)%\dotnet`).
 
 | Origem | Significado |
 | --- | --- |
 | `dotnetscope` | Instalado pelo DotnetScope. Pode ter registro próprio ou ter chegado com outra instalação; nesse caso, `managedBy` mostra qual, por exemplo `sdk 10.0.402`. |
 | `external` | Instalado por outra ferramenta (`dotnet-install`, Ansible, IDE) ou em raiz que não pertence a pacote do sistema. |
-| `package` | Em raiz cujo `dotnet` pertence a um pacote do sistema, conforme `dpkg-query -S` ou `rpm -qf`. |
+| `package` | Em raiz cujo `dotnet` pertence a um pacote do sistema, conforme `dpkg-query -S` ou `rpm -qf`; no Windows, raiz registrada pelo instalador oficial em `HKLM\SOFTWARE\dotnet\Setup\InstalledVersions\<arch>\InstallLocation`. |
 
 Registros do manifesto cujos arquivos não existem aparecem com `present: false`;
 use `dotnetscope doctor`. É uma operação somente leitura.

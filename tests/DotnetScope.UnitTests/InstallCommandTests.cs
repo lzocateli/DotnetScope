@@ -13,6 +13,9 @@ public sealed class InstallCommandTests
 {
     private static readonly string Home = OperatingSystem.IsWindows() ? @"C:\Users\teste" : "/home/teste";
 
+    // Raiz absoluta no SO de execução para os testes do fluxo Windows (o RID é simulado).
+    private static readonly string WindowsRoot = OperatingSystem.IsWindows() ? @"C:\Users\teste\dotnet" : "/home/teste/dotnet";
+
     [Theory]
     [InlineData(ExitCodes.Usage, "install")]
     [InlineData(ExitCodes.Usage, "install", "sdk")]
@@ -85,11 +88,86 @@ public sealed class InstallCommandTests
     }
 
     [Fact]
-    public async Task Install_Windows_AindaNaoSuportado()
+    public async Task Install_Windows_UsaZipEConfiguraORegistro()
     {
-        var result = await RunAsync(["install", "sdk", "10.0.402"], rid: "win-x64");
+        var store = new InMemoryEnvironmentStore();
 
-        Assert.Equal(ExitCodes.NotFound, result.ExitCode);
+        var result = await RunAsync(
+            ["install", "sdk", "10.0.402", "--install-dir", WindowsRoot, "--output", "json"], rid: "win-x64", windowsStore: store);
+
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        using var json = JsonDocument.Parse(result.Output);
+        Assert.EndsWith(".zip", json.RootElement.GetProperty("artifact").GetProperty("fileName").GetString(), StringComparison.Ordinal);
+        var environment = json.RootElement.GetProperty("environment");
+        Assert.Equal("applied", environment.GetProperty("status").GetString());
+        Assert.Contains(@"HKCU\Environment\Path", environment.GetProperty("changedFiles").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(WindowsRoot, store.User["DOTNET_ROOT"].Value);
+        Assert.StartsWith(WindowsRoot + ";", store.User["Path"].Value, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Install_Windows_TextoOrientaTerminalNovoEPowerShell()
+    {
+        var result = await RunAsync(["install", "sdk", "10.0.402", "--install-dir", WindowsRoot], rid: "win-x64", windowsStore: new());
+
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        Assert.Contains(@"Ambiente configurado: HKCU\Environment\DOTNET_ROOT, HKCU\Environment\Path.", result.Output, StringComparison.Ordinal);
+        Assert.Contains("dotnetscope env show | Out-String | Invoke-Expression", result.Output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Install_Windows_ConfigureEnvFalse_ImprimeInstrucoesPowerShell()
+    {
+        var store = new InMemoryEnvironmentStore();
+
+        var result = await RunAsync(
+            ["install", "sdk", "10.0.402", "--install-dir", WindowsRoot, "--configure-env", "false"], rid: "win-x64", windowsStore: store);
+
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        Assert.Contains($"$env:DOTNET_ROOT = '{WindowsRoot}'", result.Output, StringComparison.Ordinal);
+        Assert.Empty(store.User);
+    }
+
+    [Fact]
+    public async Task Install_Windows_ConflitoNoRegistro_FalhaAntesDeInstalar()
+    {
+        var store = new InMemoryEnvironmentStore();
+        store.User["DOTNET_ROOT"] = new EnvironmentVariableValue(@"D:\dotnet", Expandable: false);
+
+        var result = await RunAsync(["install", "sdk", "10.0.402", "--install-dir", WindowsRoot], rid: "win-x64", windowsStore: store);
+
+        Assert.Equal(ExitCodes.Conflict, result.ExitCode);
+        Assert.Equal(0, result.Installer.Calls);
+    }
+
+    [Fact]
+    public async Task EnvShow_Windows_PadraoPowerShell()
+    {
+        var result = await RunAsync(["env", "show", "--install-dir", WindowsRoot], rid: "win-x64", windowsStore: new());
+
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        Assert.StartsWith("# Gerado por dotnetscope", result.Output, StringComparison.Ordinal);
+        Assert.Contains($"$env:DOTNET_ROOT = '{WindowsRoot}'", result.Output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task InstallArchive_Windows_ExigeZip()
+    {
+        var archive = Path.GetTempFileName();
+        try
+        {
+            var result = await RunAsync(
+                ["install", "sdk", "10.0.402", "--install-dir", WindowsRoot, "--archive", archive, "--sha512", new string('a', 128)],
+                rid: "win-x64",
+                windowsStore: new());
+
+            Assert.Equal(ExitCodes.Usage, result.ExitCode);
+            Assert.Contains(".zip", result.Error, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(archive);
+        }
     }
 
     [Fact]
@@ -157,7 +235,8 @@ public sealed class InstallCommandTests
         string rid = "linux-x64",
         bool isRoot = false,
         IReadOnlyList<string>? missing = null,
-        string? home = null)
+        string? home = null,
+        InMemoryEnvironmentStore? windowsStore = null)
     {
         using var output = new StringWriter();
         using var error = new StringWriter();
@@ -178,6 +257,10 @@ public sealed class InstallCommandTests
                 FishAvailable: false,
                 SystemFiles: []),
             ProbeLoginShell = (_, _, _) => Task.FromResult<LoginShellResult?>(null),
+            CreateWindowsEnvironment = h => new WindowsEnvironmentConfigurator(
+                windowsStore ?? throw new InvalidOperationException("Informe windowsStore para RIDs Windows."),
+                Path.Combine(profileHome, "dotnetscope"),
+                h),
         };
 
         try
