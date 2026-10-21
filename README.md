@@ -4,8 +4,9 @@ CLI Native AOT (`dotnetscope`) para instalar, listar, validar e remover SDKs e
 runtimes .NET nos escopos `user` e `global`, com verificação de integridade,
 extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuário.
 
-> **Estado:** em desenvolvimento (fase F6). A primeira release ainda não foi
-> publicada. Implementado em Linux, escopo user: `list --available|--installed`,
+> **Estado:** em desenvolvimento (fase F6). Release atual:
+> [v0.1.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.1.0).
+> Implementado em Linux, escopo user: `list --available|--installed`,
 > `install` (inclusive `--archive` e `--from-global-json`), `uninstall`, `env` e
 > `doctor` ([referência da CLI](docs/cli.md)). O restante
 > descrito abaixo é planejado; consulte o
@@ -36,6 +37,9 @@ Para instalar uma versão específica, use `--version 0.1.0` (`install.sh`) ou
 e conferir a atestação de proveniência com
 `gh attestation verify <arquivo> --repo lzocateli/DotnetScope`. No Windows e no
 macOS, os comandos de instalação de SDK chegam nas fases F6 e F8.
+
+Atrás de proxy HTTP, prefira `curl`: o `wget` do BusyBox (Alpine) não usa
+`CONNECT` para HTTPS e costuma ser recusado pelo proxy.
 
 ## Uso disponível
 
