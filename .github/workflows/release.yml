@@ -1,0 +1,243 @@
+name: Release
+
+# Publica o dotnetscope em Native AOT para todos os RIDs suportados.
+# - Tag vX.Y.Z[-sufixo] (igual a VersionPrefix): build, smoke, testes dos instaladores e
+#   publicação da release no GitHub após aprovação no Environment `release`.
+# - workflow_dispatch e pull requests que alteram a cadeia de release: build, smoke e
+#   testes dos instaladores, sem publicar.
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release.yml"
+      - "install/**"
+      - "tests/installers/**"
+      - "tools/build/**"
+      - "tools/scripts/Publish-Aot.ps1"
+      - "tools/scripts/Test-AotPackage.ps1"
+      - "tools/scripts/Test-Installers.ps1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate:
+    name: Version check, build and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      version-suffix: ${{ steps.version.outputs.suffix }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          [xml] $props = Get-Content -LiteralPath Directory.Build.props -Raw
+          $prefix = @($props.Project.PropertyGroup | ForEach-Object { $_.VersionPrefix } | Where-Object { $_ })[0]
+          $suffix = ''
+          $publish = 'false'
+          if ($env:EVENT_NAME -eq 'push' -and $env:REF_TYPE -eq 'tag') {
+            if ($env:REF_NAME -notmatch '^v([0-9]+\.[0-9]+\.[0-9]+)(?:-([0-9A-Za-z][0-9A-Za-z.-]*))?$') {
+              Write-Output "::error::Tag '$($env:REF_NAME)' fora do formato vX.Y.Z[-sufixo]."
+              exit 1
+            }
+            if ($Matches[1] -ne $prefix) {
+              Write-Output "::error::Tag '$($env:REF_NAME)' difere de VersionPrefix $prefix em Directory.Build.props."
+              exit 1
+            }
+            $suffix = "$($Matches[2])"
+            $publish = 'true'
+          }
+          "suffix=$suffix" >> $env:GITHUB_OUTPUT
+          "publish=$publish" >> $env:GITHUB_OUTPUT
+          Write-Output "Versao: $prefix$(if ($suffix) { "-$suffix" }) (publicar: $publish)"
+
+      - name: Build and tests in container
+        shell: pwsh
+        run: ./tools/scripts/Invoke-Validation.ps1 -Engine docker
+
+  build:
+    name: Publish ${{ matrix.rid }}
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-x64, runner: ubuntu-24.04 }
+          - { rid: linux-arm64, runner: ubuntu-24.04 }
+          - { rid: linux-musl-x64, runner: ubuntu-24.04 }
+          - { rid: win-x64, runner: windows-2025 }
+          - { rid: win-arm64, runner: windows-11-arm }
+          - { rid: osx-arm64, runner: macos-15 }
+          - { rid: osx-x64, runner: macos-15-intel }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET (native toolchain)
+        if: ${{ !startsWith(matrix.rid, 'linux-') }}
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Publish Native AOT package
+        shell: pwsh
+        env:
+          RID: ${{ matrix.rid }}
+          VERSION_SUFFIX: ${{ needs.validate.outputs.version-suffix }}
+        run: |
+          $arguments = @{ Rid = $env:RID }
+          if ($env:VERSION_SUFFIX) { $arguments.VersionSuffix = $env:VERSION_SUFFIX }
+          if ($IsLinux) { $arguments.Engine = 'docker' }
+          ./tools/scripts/Publish-Aot.ps1 @arguments
+          exit $LASTEXITCODE
+
+      - name: Upload package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-${{ matrix.rid }}
+          path: artifacts/release/dotnetscope-${{ matrix.rid }}.*
+          if-no-files-found: error
+          retention-days: 7
+
+  verify:
+    name: Smoke and installers (${{ matrix.runner }})
+    needs: [validate, build]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, rids: "linux-x64 linux-musl-x64" }
+          - { runner: ubuntu-24.04-arm, rids: "linux-arm64" }
+          - { runner: windows-2025, rids: "win-x64" }
+          - { runner: windows-11-arm, rids: "win-arm64" }
+          - { runner: macos-15, rids: "osx-arm64" }
+          - { runner: macos-15-intel, rids: "osx-x64" }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: artifacts/release
+
+      - name: Smoke test packages
+        shell: pwsh
+        env:
+          RIDS: ${{ matrix.rids }}
+          VERSION_SUFFIX: ${{ needs.validate.outputs.version-suffix }}
+        run: |
+          ./tools/scripts/Publish-Aot.ps1 -ChecksumsOnly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($rid in $env:RIDS -split ' ') {
+            $arguments = @{ Rid = $rid }
+            if ($env:VERSION_SUFFIX) { $arguments.VersionSuffix = $env:VERSION_SUFFIX }
+            if ($IsLinux) { $arguments.Engine = 'docker' }
+            ./tools/scripts/Test-AotPackage.ps1 @arguments
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Test installers
+        shell: pwsh
+        run: |
+          $arguments = @{}
+          if ($IsLinux) { $arguments.Engine = 'docker' }
+          ./tools/scripts/Test-Installers.ps1 @arguments
+          exit $LASTEXITCODE
+
+  publish:
+    name: Publish GitHub release
+    needs: [validate, build, verify]
+    if: ${{ needs.validate.outputs.publish == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: dist
+
+      - name: Add installers and checksums
+        shell: pwsh
+        run: |
+          Copy-Item -LiteralPath install/install.sh, install/install.ps1 -Destination dist
+          ./tools/scripts/Publish-Aot.ps1 -ChecksumsOnly -OutputDirectory dist
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $expected = 9
+          $count = @(Get-ChildItem -LiteralPath dist -File | Where-Object Name -ne 'SHA256SUMS').Count
+          if ($count -ne $expected) {
+            Write-Output "::error::Esperados $expected arquivos de release, encontrados $count."
+            exit 1
+          }
+          Get-Content -LiteralPath dist/SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+
+      - name: Create release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION_SUFFIX: ${{ needs.validate.outputs.version-suffix }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [ -n "$VERSION_SUFFIX" ]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes \
+            --title "DotnetScope $TAG" \
+            "${flags[@]}"

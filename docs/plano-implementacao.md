@@ -280,14 +280,18 @@ runners efêmeros.
 
 - RIDs: `linux-x64`, `linux-arm64`, `linux-musl-x64`, `win-x64`, `win-arm64`,
   `osx-arm64`, `osx-x64`.
-- Native AOT publicado no próprio SO em matriz de CI; Linux glibc compilado na
-  base mais antiga suportada pelo .NET 10 (a confirmar na F5).
+- Native AOT publicado no próprio SO em matriz de CI. RIDs Linux usam as
+  imagens oficiais de cross-build do .NET (`azurelinux-3.0-net10.0-cross-*`):
+  sysroot glibc 2.27 (Ubuntu 18.04) ou musl 1.2.3 (Alpine 3.17), clang e lld
+  (decisão da F5; ver [processo de release](release.md)).
 - Build local e no CI em `docker.io/lzocateli/dotnet-sdk:10.0.402-noble-v1`
   via `tools/scripts/Invoke-Validation.ps1`; com `-Aot`, `clang` e `zlib1g-dev`
   são instalados no container descartável (decisão da F0b; imagem própria com
   toolchain AOT pode ser criada na F5).
-- Artefatos: `dotnetscope-<versão>-<rid>.tar.gz`/`.zip`, `SHA256SUMS`, assinatura,
-  SBOM e atestação de proveniência (GitHub Attestations).
+- Artefatos: `dotnetscope-<rid>.tar.gz`/`.zip`, `install.sh`, `install.ps1`,
+  `SHA256SUMS` e atestação de proveniência (GitHub Attestations); assinatura e
+  SBOM na F9. Os nomes não levam versão para que `releases/latest/download`
+  seja estável (decisão da F5).
 - Canais, em ordem: GitHub Releases + `install.sh`/`install.ps1` (verificam
   checksum, sem autoelevação) → `.deb` e repositório APT assinado → winget e Homebrew.
 - O próprio `dotnetscope` instala em `~/.local/bin` (user) ou `/usr/local/bin` (global).
@@ -316,7 +320,7 @@ runners efêmeros.
 | F2 | `install` user Linux por arquivo, verificação, extração segura, manifesto, lock | SDK funcional em container limpo; casos maliciosos rejeitados | concluída (E2E Ubuntu 24.04 e Fedora 41) |
 | F3 | `--configure-env` (Linux/macOS), `env show\|apply\|remove`, detecção de conflito | casos obrigatórios da seção 12 verdes | concluída (E2E bash/zsh/fish em Ubuntu 24.04 e Fedora 41) |
 | F4 | `uninstall`, `list --installed`, `doctor [--repair]`, `install --archive <arquivo> --sha512 <hash>` (seção 7), `install --from-global-json [caminho]` (seção 3, com `rollForward`) | reversão completa e origem correta na listagem; instalação offline verificada; versão resolvida conforme `global.json` | concluída (E2E com remoção completa em Ubuntu 24.04 e Fedora 41) |
-| F5 | Publicação AOT multi-RID, `install.sh`/`install.ps1`, release no GitHub | binários rodam sem .NET; checksums publicados | pendente |
+| F5 | Publicação AOT multi-RID, `install.sh`/`install.ps1`, release no GitHub | binários rodam sem .NET; checksums publicados | concluída (smoke em Ubuntu 18.04, Rocky 8, Debian 12, Alpine 3.17/3.24 e runners Windows/macOS; [processo de release](release.md)) |
 | F6 | Windows user (zip + registro + `WM_SETTINGCHANGE`) | `dotnet` disponível em novo terminal; reversão do registro | pendente |
 | F7 | Global: `apt`, instalador Windows, `.pkg`, instalação por arquivo (D4), `--install-deps` | instalação elevada validada; mistura com pacote recusada | pendente |
 | F8 | macOS user | E2E em runner macOS | pendente |
@@ -327,16 +331,16 @@ com milestone, e é entregue por PR com as evidências do template.
 
 ## 16. Riscos e questões em aberto
 
-- Base glibc mínima do binário Linux e suporte a distribuições sem ICU.
+- Suporte a distribuições sem ICU (o binário usa `InvariantGlobalization`; o
+  SDK instalado ainda exige ICU ou `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT`).
 - Disponibilidade e granularidade de versões nos feeds `apt` do Ubuntu.
 - Comportamento de `install_location` e de `InstalledVersions` com instalações
   globais mistas.
 - Shells não suportados na v1 (nushell, tcsh) apenas recebem instruções.
 - Custo de manter repositório APT assinado e manifests winget/Homebrew.
-- O binário AOT atual é publicado em Ubuntu 24.04 (glibc 2.39) e não executa em
-  distribuições com glibc anterior (Ubuntu 22.04, Debian 12). A matriz E2E da F2
-  cobre Ubuntu 24.04 e Fedora 41; as demais distribuições da seção 12 dependem da
-  base de build antiga e do RID `linux-musl-x64` (F5).
+- O binário de desenvolvimento de `Invoke-Validation.ps1 -Aot` ainda é
+  publicado em Ubuntu 24.04 (glibc 2.39); os pacotes de release usam a base
+  glibc 2.27 desde a F5. `linux-musl-arm64` não é publicado.
 - `install --archive` e `install --from-global-json` foram atribuídos à F4 em
   2026-10-20 (decisão do revisor humano).
 - Decisões de implementação da F3:
@@ -352,6 +356,21 @@ com milestone, e é entregue por PR com as evidências do template.
   - `allowPrerelease` do `global.json` só vale quando `true` explícito;
   - arquivos de usuário que o SDK cria em `~/.dotnet` (`DOTNET_CLI_HOME`) nunca
     são removidos.
+- Decisões de implementação da F5:
+  - os instaladores não alteram perfis, registro nem `PATH`; mostram a linha a
+    adicionar (a configuração de ambiente continua exclusiva do binário);
+  - `install.sh` aceita `http://` apenas para `127.0.0.1`/`localhost`
+    (`--base-url`, usado nos testes); downloads reais exigem HTTPS sem
+    redirecionamento para HTTP;
+  - o binário novo é executado no diretório de destino antes de substituir o
+    anterior, evitando `/tmp` com `noexec` e trocas por binário inválido;
+  - como root, `install.sh` recusa diretórios de destino que não pertencem ao
+    root ou são graváveis por grupo/outros (ataque por link simbólico no
+    arquivo temporário), e o arquivo temporário é criado com `mktemp`;
+  - o one-liner do Windows habilita TLS 1.2 antes de baixar `install.ps1`,
+    porque o Windows PowerShell 5.1 pode não habilitá-lo por padrão;
+  - smoke de `linux-arm64` e `win-arm64` roda em runners Arm64 nativos
+    (`ubuntu-24.04-arm`, `windows-11-arm`), sem emulação.
 - A configuração de ambiente no Windows (registro) continua na F6 e a global
   (`/etc/profile.d`, `/etc/paths.d`, `install_location`) na F7.
 - O metadata oficial publica assinatura PKCS#7 destacada (campo `signature`,

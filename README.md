@@ -4,12 +4,38 @@ CLI Native AOT (`dotnetscope`) para instalar, listar, validar e remover SDKs e
 runtimes .NET nos escopos `user` e `global`, com verificação de integridade,
 extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuário.
 
-> **Estado:** em desenvolvimento (fase F5). Ainda não há release publicada.
-> Implementado em Linux/macOS, escopo user: `list --available|--installed`,
+> **Estado:** em desenvolvimento (fase F6). A primeira release ainda não foi
+> publicada. Implementado em Linux, escopo user: `list --available|--installed`,
 > `install` (inclusive `--archive` e `--from-global-json`), `uninstall`, `env` e
 > `doctor` ([referência da CLI](docs/cli.md)). O restante
 > descrito abaixo é planejado; consulte o
 > [plano de implementação](docs/plano-implementacao.md) para fases e decisões.
+
+## Instalação
+
+Binários Native AOT, sem dependência de .NET, para `linux-x64`, `linux-arm64`,
+`linux-musl-x64` (glibc 2.27+ ou musl 1.2.3+), `win-x64`, `win-arm64`,
+`osx-arm64` e `osx-x64`. Os instaladores conferem o SHA-256 do pacote com o
+`SHA256SUMS` da release, não se autoelevam e não alteram perfis nem o `PATH`:
+
+```bash
+# Linux e macOS: instala em ~/.local/bin (--global: /usr/local/bin, exige sudo)
+curl -fsSL https://github.com/lzocateli/DotnetScope/releases/latest/download/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell 5.1+): instala em %LOCALAPPDATA%\Programs\dotnetscope
+# A primeira linha habilita TLS 1.2, exigido pelo GitHub, no Windows PowerShell 5.1.
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
+& ([scriptblock]::Create((Invoke-RestMethod https://github.com/lzocateli/DotnetScope/releases/latest/download/install.ps1)))
+```
+
+Para instalar uma versão específica, use `--version 0.1.0` (`install.sh`) ou
+`-Version 0.1.0` (`install.ps1`). Também é possível baixar o pacote
+`dotnetscope-<rid>.tar.gz`/`.zip` da [página de releases](https://github.com/lzocateli/DotnetScope/releases)
+e conferir a atestação de proveniência com
+`gh attestation verify <arquivo> --repo lzocateli/DotnetScope`. No Windows e no
+macOS, os comandos de instalação de SDK chegam nas fases F6 e F8.
 
 ## Uso disponível
 
@@ -65,6 +91,9 @@ Blocos e instalações de terceiros nunca são sobrescritos.
   ```bash
   pwsh ./tools/scripts/Invoke-E2E.ps1
   ```
+
+- Pacotes de release (Native AOT por RID, `SHA256SUMS`) e testes dos
+  instaladores: veja o [processo de release](docs/release.md).
 
 - Instale o hook obrigatório de detecção de secrets (requer PowerShell 7 e
   Docker ou Podman):
