@@ -46,8 +46,24 @@ step "Estado global do root e staging limpo"
 [ "$(stat -f '%u %Lp' "$STATE")" = "0 755" ] || fail "estado com dono/modo $(stat -f '%u %Lp' "$STATE")"
 if [ -n "$(ls -A "$STATE/staging" 2>/dev/null)" ]; then fail "staging não foi removido"; fi
 
-step "Idempotência e inventário"
-"$BIN" install runtime "$VERSION" --scope global --yes --output json | grep -q '"status": "alreadyInstalled"' || fail "reinstalação não foi idempotente"
+untrusted=""
+for dir in /usr/local /usr/local/share; do
+  if [ -d "$dir" ] && [ "$(stat -f '%u' "$dir")" != "0" ]; then untrusted="$untrusted $dir"; fi
+done
+if [ -n "$untrusted" ]; then
+  step "Raiz não confiável ($untrusted): host não executado como root e .pkg executado de novo"
+  grep -q 'grava nesse local mesmo assim' /tmp/dotnetscope-install.err || fail "aviso de raiz não confiável ausente"
+  grep -q 'executado como root' /tmp/dotnetscope-install.json || fail "validação deveria ser somente por arquivos"
+  "$BIN" install runtime "$VERSION" --scope global --yes --output json >/tmp/dotnetscope-again.json 2>/dev/null
+  grep -q '"status": "installed"' /tmp/dotnetscope-again.json || fail "com raiz não confiável, a pasta existente não pode ser aceita: $(cat /tmp/dotnetscope-again.json)"
+  # O runner é descartável: a raiz passa a ser do root para cobrir o ramo confiável.
+  for dir in $untrusted; do chown root:wheel "$dir"; chmod go-w "$dir"; done
+fi
+
+step "Raiz confiável: idempotência validada pelo host, e inventário"
+"$BIN" install runtime "$VERSION" --scope global --yes --output json >/tmp/dotnetscope-again.json
+grep -q '"status": "alreadyInstalled"' /tmp/dotnetscope-again.json || fail "reinstalação não foi idempotente: $(cat /tmp/dotnetscope-again.json)"
+if grep -q 'executado como root' /tmp/dotnetscope-again.json; then fail "com raiz confiável, a validação deveria executar o host"; fi
 "$BIN" list --installed --output json | tr -d '\n ' | grep -q "\"component\":\"runtime\",\"version\":\"$VERSION\",\"origin\":\"dotnetscope\"" \
   || fail "list --installed sem o runtime do .pkg"
 
