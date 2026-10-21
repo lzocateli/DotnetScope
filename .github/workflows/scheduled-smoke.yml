@@ -93,7 +93,7 @@ jobs:
         run: ./tools/scripts/Invoke-WindowsE2E.ps1
 
   install-e2e-macos:
-    name: Install E2E (macOS global scope, ephemeral runner)
+    name: Install E2E (macOS user and global scopes, ephemeral runner)
     runs-on: macos-15
     timeout-minutes: 45
     permissions:
@@ -113,6 +113,6 @@ jobs:
         shell: pwsh
         run: ./tools/scripts/Publish-Aot.ps1 -Rid osx-arm64
 
-      - name: Install runtime with the official .pkg and verify
+      - name: Install in user scope and with the official .pkg, verify and revert
         shell: pwsh
         run: ./tools/scripts/Invoke-MacE2E.ps1
