@@ -1,17 +1,22 @@
 using System.Diagnostics;
+using System.Reflection;
 using DotnetScope.Core;
 
 namespace DotnetScope.IntegrationTests;
 
 public sealed class CliProcessTests
 {
+    // A versão vem de VersionPrefix em Directory.Build.props, compartilhado com os testes.
+    private static readonly string ExpectedVersion = typeof(CliProcessTests).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];
+
     [Fact]
     public async Task Processo_Version_RetornaSucessoNoStdout()
     {
         var result = await RunCliAsync("--version");
 
         Assert.Equal(ExitCodes.Success, result.ExitCode);
-        Assert.StartsWith("0.1.0", result.Output.Trim(), StringComparison.Ordinal);
+        Assert.StartsWith(ExpectedVersion + "+", result.Output.Trim(), StringComparison.Ordinal);
         Assert.Empty(result.Error);
     }
 

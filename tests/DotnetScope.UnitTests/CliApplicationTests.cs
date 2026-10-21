@@ -1,3 +1,4 @@
+using System.Reflection;
 using DotnetScope.Cli;
 using DotnetScope.Core;
 
@@ -5,6 +6,10 @@ namespace DotnetScope.UnitTests;
 
 public sealed class CliApplicationTests
 {
+    // A versão vem de VersionPrefix em Directory.Build.props, compartilhado com os testes.
+    private static readonly string ExpectedVersion = typeof(CliApplicationTests).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];
+
     [Fact]
     public async Task RunAsync_SemArgumentos_ExibeAjudaERetornaSucesso()
     {
@@ -32,7 +37,7 @@ public sealed class CliApplicationTests
         var (exitCode, output, _) = await RunAsync(["--version"]);
 
         Assert.Equal(ExitCodes.Success, exitCode);
-        Assert.StartsWith("0.1.0", output.Trim(), StringComparison.Ordinal);
+        Assert.StartsWith(ExpectedVersion + "+", output.Trim(), StringComparison.Ordinal);
     }
 
     private static async Task<(int ExitCode, string Output, string Error)> RunAsync(string[] args)
