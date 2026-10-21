@@ -39,6 +39,7 @@ public sealed class InstallCommandTests
     [InlineData(ExitCodes.Integrity, "install", "SDK-9.0")]
     public async Task Install_EntradasInvalidas_RetornamCodigoDocumentado(int expected, params string[] args)
     {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Cenário Linux simulado (home e host Unix).");
         var rid = args.Contains("SDK-9.0") ? "linux-arm64" : "linux-x64";
         var result = await RunAsync(args, rid: rid);
 
@@ -59,6 +60,7 @@ public sealed class InstallCommandTests
     [Fact]
     public async Task Install_ComoRootComAllowRoot_Prossegue()
     {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Cenário Linux simulado (home e host Unix).");
         var result = await RunAsync(["install", "sdk", "10.0.402", "--allow-root"], isRoot: true);
 
         Assert.Equal(ExitCodes.Success, result.ExitCode);
@@ -173,6 +175,7 @@ public sealed class InstallCommandTests
     [Fact]
     public async Task Install_PadraoUsaDotnetNoHomeEScopoUser()
     {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Cenário Linux simulado (home e host Unix).");
         var result = await RunAsync(["install", "sdk", "10.0.402", "--output", "json"]);
 
         Assert.Equal(ExitCodes.Success, result.ExitCode);
@@ -188,6 +191,7 @@ public sealed class InstallCommandTests
     [Fact]
     public async Task Install_DependenciasAusentes_EmiteAvisos()
     {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Cenário Linux simulado (home e host Unix).");
         var result = await RunAsync(["install", "sdk", "10.0.402"], missing: ["ICU (libicu)"]);
 
         Assert.Equal(ExitCodes.Success, result.ExitCode);
@@ -197,6 +201,7 @@ public sealed class InstallCommandTests
     [Fact]
     public async Task Install_CanalEol_EmiteAviso()
     {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Cenário Linux simulado (home e host Unix).");
         var result = await RunAsync(["install", "runtime", "7.0.20"]);
 
         Assert.Equal(ExitCodes.Success, result.ExitCode);
@@ -206,6 +211,7 @@ public sealed class InstallCommandTests
     [Fact]
     public async Task Install_TextoInformaComoUsarNaSessao()
     {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Cenário Linux simulado (home e host Unix).");
         var result = await RunAsync(["install", "sdk", "10.0.402"]);
 
         Assert.Contains("Instalado: sdk 10.0.402", result.Output, StringComparison.Ordinal);
@@ -216,6 +222,7 @@ public sealed class InstallCommandTests
     [Fact]
     public async Task Install_ConfigureEnvFalse_SomenteImprimeInstrucoes()
     {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Cenário Linux simulado (home e host Unix).");
         var result = await RunAsync(["install", "sdk", "10.0.402", "--configure-env", "false"]);
 
         Assert.Equal(ExitCodes.Success, result.ExitCode);

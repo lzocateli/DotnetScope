@@ -110,6 +110,7 @@ public sealed class UninstallPlanTests : IDisposable
     [Fact]
     public void Inventory_ClassificaOrigens()
     {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Cenário Linux simulado (home e host Unix).");
         var system = Path.Combine(Path.GetTempPath(), "dotnetscope-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(system, "shared/Microsoft.NETCore.App/8.0.10"));
         File.WriteAllText(Path.Combine(system, "dotnet"), "host");
