@@ -390,6 +390,11 @@ com milestone, e é entregue por PR com as evidências do template.
     Microsoft (Team ID `UBF8T346G9`);
   - uma raiz do `.pkg` com ancestral de outro usuário (Homebrew em Macs Intel)
     gera aviso, não erro, porque o instalador oficial grava nela de qualquer forma;
+    nesse caso o dotnetscope não executa o host dessa raiz como root (validação
+    por arquivos) e não usa o atalho "já instalado";
+  - o `installer` ignora SIGINT e a CLI aguarda até 31 minutos após Ctrl+C
+    (`ProcessTerminationTimeout`), para registrar o resultado real dos
+    instaladores oficiais (Windows e macOS);
   - o `stat` usa a sintaxe BSD no macOS (`-f '%u %Lp'`).
 - Decisões de implementação da F7c:
   - no Windows, o escopo global usa somente o instalador oficial `.exe`; a

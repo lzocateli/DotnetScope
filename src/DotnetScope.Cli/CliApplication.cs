@@ -45,12 +45,14 @@ internal static class CliApplication
             return ExitCodes.Usage;
         }
 
-        // Após Ctrl+C/SIGTERM, aguarda a ação concluir rollback e limpeza antes de encerrar o processo.
+        // Após Ctrl+C/SIGTERM, aguarda a ação concluir rollback e limpeza antes de encerrar o processo. Os comandos
+        // reagem ao cancelamento em segundos; o prazo cobre os instaladores oficiais do escopo global, que não são
+        // interrompidos e podem levar até 30 minutos, para que o resultado real seja registrado no manifesto.
         var configuration = new InvocationConfiguration
         {
             Output = services.Output,
             Error = services.Error,
-            ProcessTerminationTimeout = TimeSpan.FromSeconds(60),
+            ProcessTerminationTimeout = TimeSpan.FromMinutes(31),
         };
         return await parseResult.InvokeAsync(configuration, cancellationToken).ConfigureAwait(false);
     }

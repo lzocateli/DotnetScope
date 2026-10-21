@@ -355,7 +355,9 @@ internal static class InstallCommand
         }
         catch (DotnetScopeException exception) when (exception.ExitCode == ExitCodes.Privilege)
         {
-            diagnostics.Warning($"{exception.Message} O instalador oficial grava nesse local mesmo assim; um usuário comum poderia alterar o .NET da máquina.");
+            diagnostics.Warning(
+                $"{exception.Message} O instalador oficial grava nesse local mesmo assim; um usuário comum poderia alterar o .NET da máquina. "
+                + "O dotnetscope não executará o dotnet dessa raiz como root e validará somente os arquivos.");
         }
     }
 

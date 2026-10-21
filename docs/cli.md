@@ -670,7 +670,12 @@ sudo dotnetscope install runtime 9.0 --scope global --yes
 - Se `/usr/local/share/dotnet` ou um ancestral pertencer a outro usuário (por
   exemplo, o Homebrew em Macs Intel), a CLI avisa: o instalador oficial grava
   nesse local mesmo assim, e um usuário comum poderia alterar o .NET da máquina.
-- Ctrl+C durante o `installer` não o interrompe; após 30 minutos, ele é encerrado.
+  Nesse caso, o dotnetscope nunca executa o `dotnet` dessa raiz como root: a
+  validação confere só os arquivos e o atalho `alreadyInstalled` não vale (o
+  `.pkg` verificado é executado de novo).
+- Ctrl+C durante o `installer` não o interrompe (o SIGINT é ignorado por ele): a
+  CLI espera o resultado real e registra a instalação. Após 30 minutos, o
+  instalador é encerrado.
 - Componente já presente é `alreadyInstalled` e não é registrado;
   `environment.status` é `package`.
 - O `.pkg` não tem desinstalador (D-F7-4): `uninstall --scope global` de uma

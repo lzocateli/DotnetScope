@@ -78,7 +78,11 @@ public sealed class MacPkgInstaller : IArtifactInstaller
     public async Task<InstallResult> InstallAsync(ResolvedArtifact artifact, string root, InstallScope scope, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(artifact);
-        if (InstallLocations.IsInstalled(root, artifact.Component, artifact.Version))
+
+        // Com a raiz controlável por outro usuário (Homebrew em Macs Intel), nada nela é executado como root e o
+        // atalho "já instalado" não vale: a pasta poderia ter sido plantada; o .pkg verificado é executado de novo.
+        var trusted = IsTrusted(root);
+        if (trusted && InstallLocations.IsInstalled(root, artifact.Component, artifact.Version))
         {
             var existing = await DotnetHostValidator.ValidateAsync(root, artifact, cancellationToken).ConfigureAwait(false);
             return new InstallResult(InstallStatus.AlreadyInstalled, artifact, root, [], [], false, existing);
@@ -107,7 +111,12 @@ public sealed class MacPkgInstaller : IArtifactInstaller
             // Interromper o installer no meio deixaria a máquina fora do controle do dotnetscope: o Ctrl+C só é informado.
             using var notice = cancellationToken.Register(
                 () => diagnostics.Warning($"aguardando {artifact.File.Name} terminar; interrompê-lo deixaria a instalação inconsistente."));
-            var result = await runner.RunAsync(Installer, ["-pkg", package, "-target", "/"], SetupTimeout, CancellationToken.None).ConfigureAwait(false);
+            // SIGINT do terminal atinge todo o grupo de processos; ignorado antes do exec, o installer não é interrompido.
+            var result = await runner.RunAsync(
+                "/bin/sh",
+                ["-c", "trap '' INT; exec " + Installer + " -pkg \"$1\" -target /", "dotnetscope-installer", package],
+                SetupTimeout,
+                CancellationToken.None).ConfigureAwait(false);
             if (result.ExitCode != 0)
             {
                 var detail = result.Error.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
@@ -142,11 +151,26 @@ public sealed class MacPkgInstaller : IArtifactInstaller
                 false),
             diagnostics,
             CancellationToken.None).ConfigureAwait(false);
-        var validation = await DotnetHostValidator.ValidateAsync(root, artifact, CancellationToken.None).ConfigureAwait(false);
+        var validation = trusted && IsTrusted(root)
+            ? await DotnetHostValidator.ValidateAsync(root, artifact, CancellationToken.None).ConfigureAwait(false)
+            : DotnetHostValidator.ValidateFiles(root, artifact);
         return new InstallResult(InstallStatus.Installed, artifact, root, [], [], false, validation);
     }
 
     public void Dispose() => fetcher.Dispose();
+
+    private static bool IsTrusted(string root)
+    {
+        try
+        {
+            GlobalLocations.EnsureTrusted(root, Platform.UnixFileOwnership.Stat, "a instalação");
+            return true;
+        }
+        catch (DotnetScopeException exception) when (exception.ExitCode == ExitCodes.Privilege)
+        {
+            return false;
+        }
+    }
 
     private static void VerifySha512(string path, string expected, string fileName)
     {

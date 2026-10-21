@@ -8,6 +8,19 @@ namespace DotnetScope.Infrastructure.Installation;
 /// <summary>Executa o host instalado (<c>--list-sdks</c>/<c>--list-runtimes</c>) para confirmar o componente.</summary>
 internal static class DotnetHostValidator
 {
+    /// <summary>
+    /// Validação sem executar o host: confere a pasta versionada do componente. Usada quando a raiz pode ser alterada
+    /// por outro usuário, para nunca executar como root um binário que ele controla.
+    /// </summary>
+    public static HostValidation ValidateFiles(string root, ResolvedArtifact artifact)
+    {
+        ArgumentNullException.ThrowIfNull(artifact);
+        var primary = Path.Combine(root, DotnetLayout.PrimaryPath(artifact.Component, artifact.Version));
+        return Directory.Exists(primary)
+            ? new HostValidation(true, $"{DotnetLayout.PrimaryPath(artifact.Component, artifact.Version)} presente (raiz não confiável: o host não foi executado como root)")
+            : new HostValidation(false, $"{primary} não existe após a instalação");
+    }
+
     public static async Task<HostValidation> ValidateAsync(string root, ResolvedArtifact artifact, CancellationToken cancellationToken)
     {
         var host = Path.Combine(root, DotnetLayout.HostExecutable(OperatingSystem.IsWindows()));

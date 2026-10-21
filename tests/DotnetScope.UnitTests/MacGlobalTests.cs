@@ -55,6 +55,22 @@ public sealed class MacGlobalTests : IDisposable
     }
 
     [Fact]
+    public void ValidacaoPorArquivos_NaoExecutaOHost()
+    {
+        var root = Path.Combine(_base, "dotnet");
+        var artifact = new ResolvedArtifact(
+            ComponentKind.Runtime, Core.Versions.DotnetVersion.Parse("9.0.4"), null, "9.0.4", "osx-arm64",
+            new ReleaseFile("dotnet-runtime-osx-arm64.pkg", "osx-arm64", new Uri("https://builds.dotnet.microsoft.com/x.pkg"), new string('a', 128), true));
+
+        Assert.False(DotnetHostValidator.ValidateFiles(root, artifact).Succeeded);
+        Directory.CreateDirectory(Path.Combine(root, "shared", "Microsoft.NETCore.App", "9.0.4"));
+        var validation = DotnetHostValidator.ValidateFiles(root, artifact);
+
+        Assert.True(validation.Succeeded);
+        Assert.Contains("não foi executado como root", validation.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Resolver_ComInstaller_EscolheOPkg()
     {
         var resolver = new VersionResolver(new FixtureMetadataSource());
