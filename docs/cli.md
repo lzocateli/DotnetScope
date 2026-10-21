@@ -274,7 +274,7 @@ dotnetscope env remove [--dry-run] [--output text|json] [--scope user|global]
 | --- | --- |
 | `~/.config/dotnetscope/env.sh` (ou `$XDG_CONFIG_HOME`) | `DOTNET_ROOT` e entradas de `PATH` (raiz e `~/.dotnet/tools`) com guardas `case ":$PATH:"`, mais `DOTNET_CLI_TELEMETRY_OPTOUT=1` com `--telemetry-optout`. |
 | `~/.config/fish/conf.d/dotnetscope.fish` | Equivalente para o fish, quando ele está instalado ou `~/.config/fish` existe. |
-| `~/.profile`, `~/.bash_profile`, `~/.bash_login`, `~/.bashrc`, `~/.zprofile`, `~/.zshrc` | Bloco que carrega o `env.sh`, somente nos arquivos que já existem. Exceções: `~/.profile` é criado no Linux e `~/.zprofile` no macOS. |
+| `~/.profile`, `~/.bash_profile`, `~/.bash_login`, `~/.bashrc`, `~/.zprofile`, `~/.zshrc` | Bloco que carrega o `env.sh`, somente nos arquivos que já existem. Exceções: `~/.profile` é criado no Linux e `~/.zprofile` no macOS; no macOS, `~/.profile` também é criado quando o shell de login (`$SHELL`) é bash e não há `~/.bash_profile` nem `~/.bash_login`, porque é o único perfil que o bash de login lê nesse caso. |
 
 O bloco gravado nos perfis é:
 

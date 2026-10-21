@@ -382,6 +382,12 @@ com milestone, e é entregue por PR com as evidências do template.
     porque o Windows PowerShell 5.1 pode não habilitá-lo por padrão;
   - smoke de `linux-arm64` e `win-arm64` roda em runners Arm64 nativos
     (`ubuntu-24.04-arm`, `windows-11-arm`), sem emulação.
+- Decisões de implementação da F8:
+  - no macOS, `~/.profile` também é criado quando o shell de login é bash sem
+    `~/.bash_profile` nem `~/.bash_login` (o runner `macos-15` usa bash e
+    mostrou que, sem isso, o ambiente não valia para usuários de bash);
+  - o E2E do macOS usa `HOME` isolado em diretório temporário e cobre zsh,
+    bash sem perfil próprio e bash com `~/.bash_profile`.
 - Decisões de implementação da F7d:
   - no macOS, o escopo global usa somente o `.pkg` oficial (decisão do revisor
     humano em 2026-10-21, como no Windows); a remoção não é automática (D-F7-4);

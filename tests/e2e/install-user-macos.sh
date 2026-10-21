@@ -18,6 +18,8 @@ export HOME="$WORK/home"
 mkdir -p "$HOME"
 unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME XDG_CACHE_HOME DOTNET_ROOT
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+# zsh é o shell padrão do macOS; o caso do bash é coberto adiante.
+export SHELL=/bin/zsh
 cd "$HOME"
 
 # ~/.zshrc do usuário e ausência de ~/.zprofile: o macOS cria ~/.zprofile e edita só o que já existe.
@@ -42,9 +44,15 @@ grep -q '# >>> dotnetscope >>>' "$HOME/.zprofile" || fail "bloco ausente em ~/.z
 step "Shells de login novos resolvem dotnet (zsh e bash)"
 expected="$HOME/.dotnet/dotnet"
 [ "$(env -i HOME="$HOME" PATH=/usr/bin:/bin /bin/zsh -lc 'command -v dotnet')" = "$expected" ] || fail "zsh -l"
+# Shell de login bash sem ~/.bash_profile nem ~/.bash_login: o bash lê somente ~/.profile, que é criado.
+SHELL=/bin/bash "$BIN" env apply --output json >apply-bash.json
+grep -q '"matches": true' apply-bash.json || fail "bash sem perfil próprio: $(cat apply-bash.json)"
+[ -f "$HOME/.profile" ] || fail "HOME/.profile não foi criado para o bash de login"
+[ "$(env -i HOME="$HOME" PATH=/usr/bin:/bin /bin/bash -lc 'command -v dotnet')" = "$expected" ] || fail "bash -l via .profile"
+# Com ~/.bash_profile do usuário, o bloco vai para ele.
 printf '# bash_profile do usuário\n' >.bash_profile
 "$BIN" env apply >/dev/null
-[ "$(env -i HOME="$HOME" PATH=/usr/bin:/bin /bin/bash -lc 'command -v dotnet')" = "$expected" ] || fail "bash -l"
+[ "$(env -i HOME="$HOME" PATH=/usr/bin:/bin /bin/bash -lc 'command -v dotnet')" = "$expected" ] || fail "bash -l via .bash_profile"
 [ "$(env -i HOME="$HOME" PATH=/usr/bin:/bin /bin/zsh -lc 'dotnet --version')" = "$sdk" ] || fail "dotnet --version no login"
 
 step "SDK funcional"
@@ -55,10 +63,10 @@ dotnet new console --output app --name e2e >/dev/null
 (cd app && dotnet run) | grep -q 'Hello, World!' || fail "aplicação de console não executou"
 
 step "Idempotência"
-snapshot=$(cat .zprofile .zshrc .bash_profile | shasum -a 256)
+snapshot=$(cat .zprofile .zshrc .profile .bash_profile | shasum -a 256)
 "$BIN" install sdk "$sdk" | grep -q 'já está instalado' || fail "segunda instalação não foi idempotente"
 "$BIN" env apply | grep -q 'já configurado' || fail "env apply não foi idempotente"
-[ "$(cat .zprofile .zshrc .bash_profile | shasum -a 256)" = "$snapshot" ] || fail "perfis mudaram na segunda aplicação"
+[ "$(cat .zprofile .zshrc .profile .bash_profile | shasum -a 256)" = "$snapshot" ] || fail "perfis mudaram na segunda aplicação"
 
 step "Runtime $RUNTIME_SPEC lado a lado, inventário e doctor"
 "$BIN" install runtime "$RUNTIME_SPEC" --yes --configure-env false >/dev/null
@@ -75,6 +83,7 @@ for leftover in dotnet LICENSE.txt ThirdPartyNotices.txt host shared sdk packs t
   [ ! -e "$HOME/.dotnet/$leftover" ] || fail "$leftover permaneceu na raiz"
 done
 [ ! -e "$HOME/.zprofile" ] || fail "HOME/.zprofile criado pelo dotnetscope não foi removido"
+[ ! -e "$HOME/.profile" ] || fail "HOME/.profile criado pelo dotnetscope não foi removido"
 [ "$(shasum -a 256 <.zshrc)" = "$zshrc_before" ] || fail "HOME/.zshrc mudou"
 [ "$(cat .bash_profile)" = "# bash_profile do usuário" ] || fail "HOME/.bash_profile não foi restaurado"
 "$BIN" doctor || fail "doctor encontrou problemas após remover tudo"

@@ -8,6 +8,33 @@ public sealed class UserEnvironmentTests
     private static readonly IReadOnlyList<string> Block = EnvironmentScripts.ProfileBlock("\"$HOME\"/'.config/dotnetscope/env.sh'");
 
     [Theory]
+    [InlineData(false, "/bin/bash", false, true)]
+    [InlineData(true, "/bin/zsh", false, false)]
+    [InlineData(true, "/bin/bash", false, true)]
+    [InlineData(true, "/bin/bash", true, false)]
+    public void Layout_ProfileCriavelNoMacOSSomenteParaBashSemPerfilProprio(bool macOS, string shell, bool hasBashProfile, bool expected)
+    {
+        var home = Path.Combine(Path.GetTempPath(), "dotnetscope-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(home);
+        try
+        {
+            if (hasBashProfile)
+            {
+                File.WriteAllText(Path.Combine(home, ".bash_profile"), string.Empty);
+            }
+
+            var layout = Infrastructure.UserEnvironment.EnvironmentLayout.Create(home, name => name == "SHELL" ? shell : null, macOS, "/usr/bin");
+
+            Assert.Equal(expected, layout.Profiles.Single(p => p.Path == Path.Combine(home, ".profile")).Creatable);
+            Assert.Equal(macOS, layout.Profiles.Single(p => p.Path == Path.Combine(home, ".zprofile")).Creatable);
+        }
+        finally
+        {
+            Directory.Delete(home, recursive: true);
+        }
+    }
+
+    [Theory]
     [InlineData("/home/u/.dotnet", "'/home/u/.dotnet'")]
     [InlineData("/home/o'brien", "'/home/o'\\''brien'")]
     [InlineData("/tmp/$(id) `id` \"x\"", "'/tmp/$(id) `id` \"x\"'")]

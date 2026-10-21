@@ -306,6 +306,11 @@ public sealed class WindowsSetupInstaller : IArtifactInstaller
     {
         WindowsSecurity.EnsureProtectedDirectory(layout.StateDirectory);
         WindowsSecurity.EnsureProtectedDirectory(layout.StagingDirectory);
+        foreach (var stale in Directory.EnumerateDirectories(layout.StagingDirectory))
+        {
+            TryDeleteStaging(stale, attempts: 1);
+        }
+
         var staging = Path.Combine(layout.StagingDirectory, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(staging);
         try
@@ -363,13 +368,35 @@ public sealed class WindowsSetupInstaller : IArtifactInstaller
         }
         finally
         {
+            // Processos filhos do instalador (Burn) podem manter arquivos do TEMP abertos por alguns segundos.
+            if (!TryDeleteStaging(staging, attempts: 20))
+            {
+                diagnostics.Warning($"não foi possível remover o staging {staging}; ele será removido na próxima operação.");
+            }
+        }
+    }
+
+    private static bool TryDeleteStaging(string path, int attempts)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
             try
             {
-                Directory.Delete(staging, recursive: true);
+                if (Directory.Exists(path))
+                {
+                    Directory.Delete(path, recursive: true);
+                }
+
+                return true;
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                diagnostics.Warning($"não foi possível remover o staging {staging}: {exception.Message}");
+                if (attempt >= attempts)
+                {
+                    return false;
+                }
+
+                Thread.Sleep(500);
             }
         }
     }

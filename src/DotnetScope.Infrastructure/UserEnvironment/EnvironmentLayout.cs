@@ -1,13 +1,18 @@
 namespace DotnetScope.Infrastructure.UserEnvironment;
 
 /// <summary>Caminhos usados pela configuração de ambiente do usuário em Linux e macOS.</summary>
+/// <param name="BashLoginWithoutProfile">
+/// macOS: o shell de login é bash e não há <c>~/.bash_profile</c> nem <c>~/.bash_login</c>; nesse caso o bash de login lê
+/// somente <c>~/.profile</c>, que passa a ser criado.
+/// </param>
 public sealed record EnvironmentLayout(
     string Home,
     string ConfigDirectory,
     string StateDirectory,
     bool IsMacOS,
     bool FishAvailable,
-    IReadOnlyList<string> SystemFiles)
+    IReadOnlyList<string> SystemFiles,
+    bool BashLoginWithoutProfile = false)
 {
     public string EnvScript => Path.Combine(ConfigDirectory, "dotnetscope", "env.sh");
 
@@ -19,10 +24,13 @@ public sealed record EnvironmentLayout(
 
     public string LockFile => Path.Combine(StateDirectory, "dotnetscope", "env.lock");
 
-    /// <summary>Perfis candidatos e se podem ser criados quando ausentes (~/.profile no Linux, ~/.zprofile no macOS).</summary>
+    /// <summary>
+    /// Perfis candidatos e se podem ser criados quando ausentes: ~/.profile no Linux; ~/.zprofile no macOS, e também
+    /// ~/.profile quando o shell de login é bash sem ~/.bash_profile nem ~/.bash_login.
+    /// </summary>
     public IReadOnlyList<(string Path, bool Creatable)> Profiles =>
     [
-        (Path.Combine(Home, ".profile"), !IsMacOS),
+        (Path.Combine(Home, ".profile"), !IsMacOS || BashLoginWithoutProfile),
         (Path.Combine(Home, ".bash_profile"), false),
         (Path.Combine(Home, ".bash_login"), false),
         (Path.Combine(Home, ".bashrc"), false),
@@ -52,7 +60,11 @@ public sealed record EnvironmentLayout(
             system.AddRange(Directory.EnumerateFiles("/etc/profile.d", "*.sh").Order(StringComparer.Ordinal));
         }
 
-        return new EnvironmentLayout(home, config, state, isMacOS, fish, system);
+        var bashLogin = isMacOS
+            && Path.GetFileName(environment("SHELL") ?? string.Empty) == "bash"
+            && !File.Exists(Path.Combine(home, ".bash_profile"))
+            && !File.Exists(Path.Combine(home, ".bash_login"));
+        return new EnvironmentLayout(home, config, state, isMacOS, fish, system, bashLogin);
     }
 
     private static string? Absolute(string? path) =>
