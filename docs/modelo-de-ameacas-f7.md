@@ -284,6 +284,11 @@ Estado de implementação (o plano divide a F7 em F7a a F7d):
 | R19 | `--install-deps` instala somente nomes de pacote de uma tabela fixa por distribuição no código. | T19 | Unitário da tabela; nenhum valor de entrada vira nome de pacote. |
 | R20 | Journal, lock e `doctor --repair --scope global` (exige elevação) para recuperar operações interrompidas, como no escopo user. | T20 | Integração com falha injetada na mesclagem global. |
 
+Revisão de segurança independente (2026-10-21, F7a a F7d): nenhuma
+vulnerabilidade acima do limiar de relato. Dois endurecimentos sugeridos foram
+aplicados: o `doctor --scope global` executado como root valida as raízes mesmo
+sem `--repair`, e a validação do host no Windows também usa ambiente mínimo (R07).
+
 ## 7. Decisões
 
 Aprovadas por Lincoln Zocateli em 2026-10-21, que seguiu as recomendações com

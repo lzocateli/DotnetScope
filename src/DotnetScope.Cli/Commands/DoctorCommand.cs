@@ -38,7 +38,8 @@ internal static class DoctorCommand
                     // Só --repair altera algo; a verificação também é permitida sem root quando o estado é legível.
                     var (layout, globalRoot) = GlobalScope.Prepare(
                         services, services.DetectRid(), parseResult.GetValue(installDir), requireRoot: parseResult.GetValue(repair));
-                    if (parseResult.GetValue(repair))
+                    // Como root, o doctor executa o host de cada raiz: valida-as mesmo sem --repair (R05, R13).
+                    if (parseResult.GetValue(repair) || services.IsRoot())
                     {
                         GlobalScope.EnsureTrustedRoot(services, globalRoot);
                         GlobalScope.EnsureTrustedState(services, layout);
@@ -60,7 +61,7 @@ internal static class DoctorCommand
 
                 // Raízes de pacotes apt pertencem ao gerenciador de pacotes: o doctor não cria lock nem repara nada nelas.
                 roots.AddRange(manifest.Read().Where(r => AptPackages.PackageOf(r) is null).Select(r => r.Root));
-                if (global && parseResult.GetValue(repair))
+                if (global && (parseResult.GetValue(repair) || services.IsRoot()))
                 {
                     // Raízes vindas do manifesto também precisam ser confiáveis antes de qualquer reparo como root.
                     foreach (var root in roots.Distinct(StringComparer.Ordinal))

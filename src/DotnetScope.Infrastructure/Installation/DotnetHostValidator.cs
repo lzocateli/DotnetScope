@@ -39,9 +39,25 @@ internal static class DotnetHostValidator
             UseShellExecute = false,
         };
         startInfo.ArgumentList.Add(argument);
-        if (!OperatingSystem.IsWindows())
+        // Ambiente mínimo: nada herdado (LD_PRELOAD, DOTNET_*, COREHOST_TRACE, proxies) influencia o host executado,
+        // inclusive como root ou administrador.
+        if (OperatingSystem.IsWindows())
         {
-            // Ambiente mínimo: nada herdado (LD_PRELOAD, DOTNET_*, proxies) influencia o host executado, inclusive como root.
+            var preserved = new[] { "SystemRoot", "windir", "SystemDrive", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData" }
+                .Select(name => (Name: name, Value: Environment.GetEnvironmentVariable(name)))
+                .Where(variable => !string.IsNullOrEmpty(variable.Value))
+                .ToList();
+            startInfo.Environment.Clear();
+            foreach (var (name, value) in preserved)
+            {
+                startInfo.Environment[name] = value;
+            }
+
+            var systemRoot = Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows";
+            startInfo.Environment["PATH"] = Path.Combine(systemRoot, "System32") + ";" + systemRoot;
+        }
+        else
+        {
             startInfo.Environment.Clear();
             startInfo.Environment["PATH"] = "/usr/bin:/bin";
             startInfo.Environment["LANG"] = "C.UTF-8";

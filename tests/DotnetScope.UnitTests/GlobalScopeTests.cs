@@ -265,6 +265,19 @@ public sealed class GlobalScopeTests : IDisposable
     }
 
     [Fact]
+    public async Task Doctor_Global_ComoRootSemRepair_ValidaARaiz()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Escopo global do Linux.");
+
+        var result = await RunAsync(
+            ["doctor", "--scope", "global"],
+            prepare: layout => Directory.CreateDirectory(layout.Root),
+            stat: path => new UnixFileStatus(path.EndsWith("dotnet", StringComparison.Ordinal) ? 1000 : 0, Convert.ToInt32("755", 8)));
+
+        Assert.Equal(ExitCodes.Privilege, result.ExitCode);
+    }
+
+    [Fact]
     public async Task EnvApply_Global_SemRoot_RetornaPrivilegio()
     {
         var result = await RunAsync(["env", "apply", "--scope", "global"], isRoot: false);
