@@ -28,6 +28,14 @@ internal sealed record CliServices(
 
     public Func<string, EnvironmentLayout> CreateEnvironmentLayout { get; init; } = EnvironmentLayout.CreateDefault;
 
+    public Func<InstallationManifestStore> CreateManifestStore { get; init; } = InstallationManifestStore.CreateDefault;
+
+    public Func<IReadOnlyList<string>> SystemRoots { get; init; } = InstalledInventory.SystemRoots;
+
+    public Func<string, bool> IsPackageManaged { get; init; } = InstalledInventory.IsPackageManaged;
+
+    public Func<string> CurrentDirectory { get; init; } = Directory.GetCurrentDirectory;
+
     public Func<string?> LoginShell { get; init; } = LoginShellProbe.DefaultShell;
 
     public Func<string?, string, CancellationToken, Task<LoginShellResult?>> ProbeLoginShell { get; init; } = LoginShellProbe.ProbeAsync;

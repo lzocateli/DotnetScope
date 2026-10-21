@@ -1,5 +1,6 @@
 using DotnetScope.Core;
 using DotnetScope.Core.Installation;
+using DotnetScope.Core.Releases;
 using DotnetScope.Core.Resolution;
 using DotnetScope.Infrastructure.Http;
 
@@ -76,9 +77,20 @@ public sealed class ArchiveInstaller : IArtifactInstaller
         try
         {
             var archive = Path.Combine(staging, artifact.File.Name);
-            _diagnostics.Verbose($"baixando {artifact.File.Url} para {archive}");
-            await _fetcher.DownloadToFileAsync(artifact.File.Url, archive, artifact.Sha512, _progress, cancellationToken)
-                .ConfigureAwait(false);
+            if (artifact.File.Url.IsFile)
+            {
+                // Instalação offline: a cópia privada é verificada e extraída, evitando TOCTOU com o arquivo original.
+                _diagnostics.Verbose($"copiando {artifact.File.Url.LocalPath} para {archive}");
+                await CopyPrivateAsync(artifact.File.Url.LocalPath, archive, cancellationToken).ConfigureAwait(false);
+                await TrustedHttpFetcher.VerifySha512Async(archive, artifact.Sha512, artifact.File.Url, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                _diagnostics.Verbose($"baixando {artifact.File.Url} para {archive}");
+                await _fetcher.DownloadToFileAsync(artifact.File.Url, archive, artifact.Sha512, _progress, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             _diagnostics.Verbose("SHA-512 verificado");
 
             var extracted = Path.Combine(staging, "extract");
@@ -91,7 +103,8 @@ public sealed class ArchiveInstaller : IArtifactInstaller
                     $"{artifact.File.Name} não contém {primary}; a instalação foi cancelada.");
             }
 
-            var merger = new LayoutMerger(extracted, root, staging, OperatingSystem.IsWindows());
+            var merger = new LayoutMerger(
+                extracted, root, staging, OperatingSystem.IsWindows(), artifact.Component.ToName(), artifact.Version.ToString());
             ConfigureMerger?.Invoke(merger);
             // A partir daqui a operação não é cancelável: os movimentos levam milissegundos e interromper
             // um rollback recursivo deixaria a raiz inconsistente.
@@ -131,6 +144,25 @@ public sealed class ArchiveInstaller : IArtifactInstaller
     }
 
     public void Dispose() => _fetcher.Dispose();
+
+    private static async Task CopyPrivateAsync(string source, string destination, CancellationToken cancellationToken)
+    {
+        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+
+        var input = File.OpenRead(source);
+        await using (input.ConfigureAwait(false))
+        {
+            var output = new FileStream(destination, options);
+            await using (output.ConfigureAwait(false))
+            {
+                await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
 
     private void TryDelete(string staging)
     {

@@ -4,9 +4,10 @@ CLI Native AOT (`dotnetscope`) para instalar, listar, validar e remover SDKs e
 runtimes .NET nos escopos `user` e `global`, com verificação de integridade,
 extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuário.
 
-> **Estado:** em desenvolvimento (fase F4). Ainda não há release publicada.
-> Implementado: `list --available`, `install` no escopo user e `env` em
-> Linux/macOS ([referência da CLI](docs/cli.md)). O restante
+> **Estado:** em desenvolvimento (fase F5). Ainda não há release publicada.
+> Implementado em Linux/macOS, escopo user: `list --available|--installed`,
+> `install` (inclusive `--archive` e `--from-global-json`), `uninstall`, `env` e
+> `doctor` ([referência da CLI](docs/cli.md)). O restante
 > descrito abaixo é planejado; consulte o
 > [plano de implementação](docs/plano-implementacao.md) para fases e decisões.
 
@@ -24,6 +25,11 @@ dotnetscope install sdk lts --yes --configure-env false   # não altera perfis
 dotnetscope env apply                             # DOTNET_ROOT/PATH nos perfis (bloco gerenciado)
 dotnetscope env remove                            # restaura os perfis originais
 eval "$(dotnetscope env show)"                    # somente para a sessão atual
+dotnetscope install --from-global-json --yes      # SDK exigido pelo global.json do projeto
+dotnetscope install sdk 10.0.402 --archive ./dotnet-sdk-10.0.402-linux-x64.tar.gz --sha512 <hash>
+dotnetscope list --installed                      # origem: dotnetscope, external ou package
+dotnetscope uninstall sdk 10.0.402                # preserva o que outras instalações usam
+dotnetscope doctor --repair                       # recupera operações interrompidas
 ```
 
 ## Uso planejado

@@ -23,6 +23,8 @@ internal static class CliApplication
         root.Subcommands.Add(ListCommand.Build(services));
         root.Subcommands.Add(InstallCommand.Build(services));
         root.Subcommands.Add(EnvCommand.Build(services));
+        root.Subcommands.Add(UninstallCommand.Build(services));
+        root.Subcommands.Add(DoctorCommand.Build(services));
         return root;
     }
 

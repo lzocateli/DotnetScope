@@ -100,7 +100,30 @@ dotnet --list-runtimes | grep -q '^Microsoft.NETCore.App $RUNTIME_SPEC' || fail 
 [ "\$(dotnet --version)" = "\$sdk" ] || fail "SDK deixou de funcionar após o runtime"
 [ "\$(sha256sum "\$HOME/.dotnet/sdk/\$sdk/dotnet.dll")" = "\$before" ] || fail "arquivo do SDK alterado"
 grep -c '"component"' "\$HOME/.local/share/dotnetscope/manifest.json" | grep -q '^2\$' || fail "manifesto sem as duas instalações"
-printf '\nE2E OK: sdk %s e runtime %s\n' "\$sdk" "$RUNTIME_SPEC"
+
+printf '\n==> list --installed, doctor e global.json\n'
+dotnetscope list --installed | grep -q "^sdk .*\$sdk .*dotnetscope" || fail "list --installed não mostra o SDK gerenciado"
+dotnetscope doctor || fail "doctor encontrou problemas em instalação saudável"
+printf '{ "sdk": { "version": "%s", "rollForward": "disable" } }\n' "\$sdk" >global.json
+dotnetscope install --from-global-json --dry-run --output json | grep -q '"status": "alreadyInstalled"' || fail "--from-global-json não resolveu \$sdk"
+rm global.json
+
+printf '\n==> uninstall devolve a raiz e os perfis ao estado original\n'
+rt=\$(dotnet --list-runtimes | sed -n 's/^Microsoft.NETCore.App \($RUNTIME_SPEC\.[0-9]*\) .*/\1/p' | head -1)
+[ -n "\$rt" ] || fail "versão exata do runtime $RUNTIME_SPEC não encontrada"
+dotnetscope uninstall runtime "\$rt"
+! dotnet --list-runtimes | grep -q "^Microsoft.NETCore.App \$rt " || fail "runtime \$rt ainda presente"
+[ "\$(dotnet --version)" = "\$sdk" ] || fail "SDK quebrou após remover o runtime"
+dotnetscope env apply >/dev/null
+dotnetscope uninstall sdk "\$sdk" | grep -q 'DOTNET_ROOT/PATH foram removidos' || fail "ambiente não removido com a última instalação"
+# ~/.dotnet também é o DOTNET_CLI_HOME: arquivos do usuário criados pelo SDK (sentinela, telemetria) são preservados.
+for leftover in dotnet dnx LICENSE.txt ThirdPartyNotices.txt host shared sdk packs templates sdk-manifests; do
+  [ ! -e "\$HOME/.dotnet/\$leftover" ] || fail "\$leftover permaneceu na raiz após remover tudo"
+done
+same_as_originals || fail "perfis diferem dos originais após o último uninstall"
+! grep -q '"component"' "\$HOME/.local/share/dotnetscope/manifest.json" || fail "manifesto não ficou vazio"
+dotnetscope doctor || fail "doctor encontrou problemas após remover tudo"
+printf '\nE2E OK: sdk %s e runtime %s instalados, verificados e removidos\n' "\$sdk" "\$rt"
 USER
 
 step "Cenário como usuário comum"

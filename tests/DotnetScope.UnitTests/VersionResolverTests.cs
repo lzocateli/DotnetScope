@@ -150,7 +150,7 @@ public sealed class VersionResolverTests
     {
         var artifact = await ResolveAsync("RUNTIME-7.0", LinuxX64);
 
-        Assert.Equal(SupportPhase.Eol, artifact.Channel.Phase);
+        Assert.Equal(SupportPhase.Eol, artifact.Channel!.Phase);
         Assert.Equal("7.0.20", artifact.Version.ToString());
     }
 

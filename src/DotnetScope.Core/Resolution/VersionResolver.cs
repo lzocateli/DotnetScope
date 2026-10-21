@@ -14,11 +14,14 @@ public sealed record VersionCandidate(
     bool Security,
     ReleaseFile? Archive);
 
-/// <summary>Artefato escolhido para instalação, sempre com hash SHA-512.</summary>
+/// <summary>
+/// Artefato escolhido para instalação, sempre com hash SHA-512. <see cref="Channel"/> é nulo em instalações offline
+/// (<c>--archive</c>), que não consultam o metadata.
+/// </summary>
 public sealed record ResolvedArtifact(
     ComponentKind Component,
     DotnetVersion Version,
-    ReleaseChannel Channel,
+    ReleaseChannel? Channel,
     string ReleaseVersion,
     string Rid,
     ReleaseFile File)
@@ -96,17 +99,8 @@ public sealed class VersionResolver(IReleaseMetadataSource source)
         var channel = SelectChannel(request.Version, channels, options);
         var releases = await source.GetChannelReleasesAsync(channel, cancellationToken).ConfigureAwait(false);
 
-        var matching = releases.Releases
-            .SelectMany(release => release.Components
-                .Where(component => component.Component == request.Component && Matches(request.Version, component.Version))
-                .Select(component => new VersionCandidate(
-                    component.Version,
-                    release.ReleaseVersion,
-                    release.ReleaseDate,
-                    release.Security,
-                    FindArchive(component, options.Rid))))
-            .GroupBy(candidate => candidate.Version)
-            .Select(group => group.First())
+        var matching = CollectCandidates(releases, request.Component, options.Rid)
+            .Where(candidate => Matches(request.Version, candidate.Version))
             .ToList();
 
         var candidates = matching
@@ -124,6 +118,88 @@ public sealed class VersionResolver(IReleaseMetadataSource source)
 
         return new VersionQueryResult(request, options, channel, candidates);
     }
+
+    /// <summary>
+    /// Resolve o SDK a instalar para um <c>global.json</c>, seguindo a semântica oficial de <c>rollForward</c>: as
+    /// políticas <c>latest*</c> escolhem a maior versão permitida; as demais, a menor faixa que satisfaz o pedido.
+    /// </summary>
+    public async Task<ResolvedArtifact> ResolveGlobalJsonAsync(GlobalJsonSdk sdk, ResolveOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(sdk);
+        ArgumentNullException.ThrowIfNull(options);
+        var minimum = sdk.Version ?? DotnetVersion.Parse("0.0.0");
+        var policy = sdk.RollForward;
+        var channels = (await source.GetChannelsAsync(cancellationToken).ConfigureAwait(false))
+            .Where(c => options.AllowPrerelease || !c.IsPrereleasePhase || c.Channel == minimum.Channel)
+            .Where(c => policy switch
+            {
+                RollForwardPolicy.Patch or RollForwardPolicy.LatestPatch or RollForwardPolicy.Feature
+                    or RollForwardPolicy.LatestFeature or RollForwardPolicy.Disable => c.Channel == minimum.Channel,
+                RollForwardPolicy.Minor or RollForwardPolicy.LatestMinor => c.Channel.Major == minimum.Major && c.Channel >= minimum.Channel,
+                _ => c.Channel >= minimum.Channel,
+            });
+        var ordered = policy is RollForwardPolicy.LatestMinor or RollForwardPolicy.LatestMajor
+            ? channels.OrderByDescending(c => c.Channel)
+            : channels.OrderBy(c => c.Channel);
+
+        foreach (var channel in ordered)
+        {
+            var releases = await source.GetChannelReleasesAsync(channel, cancellationToken).ConfigureAwait(false);
+            var candidates = CollectCandidates(releases, ComponentKind.Sdk, options.Rid)
+                .Where(c => c.Archive is not null && c.Version >= minimum)
+                .Where(c => options.AllowPrerelease || !c.Version.IsPrerelease || c.Version == sdk.Version)
+                .ToList();
+            var selected = SelectForRollForward(policy, minimum, channel.Channel, candidates);
+            if (selected is not null)
+            {
+                return new VersionQueryResult(ComponentRequest.Create(ComponentKind.Sdk, new ExactVersionSpec(selected.Version)), options, channel, [selected])
+                    .Resolve();
+            }
+        }
+
+        throw new DotnetScopeException(
+            ExitCodes.NotFound,
+            $"Nenhum SDK com arquivo para {options.Rid} satisfaz {sdk.Path} (version {sdk.Version?.ToString() ?? "não definida"}, rollForward {RollForwardPolicies.ToName(policy)}).");
+    }
+
+    internal static VersionCandidate? SelectForRollForward(
+        RollForwardPolicy policy,
+        DotnetVersion minimum,
+        ChannelVersion channel,
+        IReadOnlyList<VersionCandidate> candidates)
+    {
+        static VersionCandidate? Max(IEnumerable<VersionCandidate> items) => items.MaxBy(c => c.Version);
+
+        var sameChannel = channel == minimum.Channel;
+        var inBand = candidates.Where(c => sameChannel && c.Version.FeatureBand == minimum.FeatureBand).ToList();
+        var lowestBand = candidates.Count == 0
+            ? []
+            : candidates.Where(c => c.Version.FeatureBand == candidates.Min(x => x.Version.FeatureBand)).ToList();
+        var higherBands = candidates.Where(c => sameChannel && c.Version.FeatureBand > minimum.FeatureBand).ToList();
+        var nextBand = higherBands.Count == 0
+            ? []
+            : higherBands.Where(c => c.Version.FeatureBand == higherBands.Min(x => x.Version.FeatureBand)).ToList();
+
+        return policy switch
+        {
+            RollForwardPolicy.Disable => candidates.FirstOrDefault(c => c.Version == minimum),
+            RollForwardPolicy.Patch => candidates.FirstOrDefault(c => c.Version == minimum) ?? Max(inBand),
+            RollForwardPolicy.LatestPatch => Max(inBand),
+            RollForwardPolicy.LatestFeature or RollForwardPolicy.LatestMinor or RollForwardPolicy.LatestMajor => Max(candidates),
+            _ when sameChannel => Max(inBand) ?? Max(nextBand),
+            RollForwardPolicy.Minor or RollForwardPolicy.Major => Max(lowestBand),
+            _ => null,
+        };
+    }
+
+    private static List<VersionCandidate> CollectCandidates(ChannelReleases releases, ComponentKind component, string rid) =>
+        releases.Releases
+            .SelectMany(release => release.Components
+                .Where(c => c.Component == component)
+                .Select(c => new VersionCandidate(c.Version, release.ReleaseVersion, release.ReleaseDate, release.Security, FindArchive(c, rid))))
+            .GroupBy(candidate => candidate.Version)
+            .Select(group => group.First())
+            .ToList();
 
     internal static bool IsWindowsRid(string rid) => rid.StartsWith("win-", StringComparison.OrdinalIgnoreCase);
 

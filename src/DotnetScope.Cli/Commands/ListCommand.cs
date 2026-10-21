@@ -6,6 +6,7 @@ using DotnetScope.Core;
 using DotnetScope.Core.Releases;
 using DotnetScope.Core.Resolution;
 using DotnetScope.Core.Versions;
+using DotnetScope.Infrastructure.Installation;
 using DotnetScope.Infrastructure.Metadata;
 
 namespace DotnetScope.Cli.Commands;
@@ -25,6 +26,8 @@ internal static class ListCommand
             Description = "Componente: sdk (padrão), runtime, aspnetcore ou windowsdesktop",
         };
         component.AcceptOnlyFromAmong([.. ComponentKindNames.All]);
+        var installed = new Option<bool>("--installed") { Description = "Lista os componentes instalados e sua origem (dotnetscope, external ou package)" };
+        var installDir = new Option<string?>("--install-dir") { Description = "Raiz do usuário em --installed (padrão: ~/.dotnet)", HelpName = "diretório" };
         var prerelease = new Option<bool>("--prerelease") { Description = "Inclui versões e canais preview/RC" };
         var offline = new Option<bool>("--offline") { Description = "Usa somente o metadata em cache" };
         var output = new Option<string>("--output")
@@ -36,7 +39,7 @@ internal static class ListCommand
 
         var command = new Command("list", "Lista canais e versões do metadata oficial de releases .NET")
         {
-            available, component, prerelease, offline, output,
+            available, installed, installDir, component, prerelease, offline, output,
         };
 
         command.SetAction((parseResult, cancellationToken) => CliApplication.ExecuteAsync(
@@ -44,11 +47,16 @@ internal static class ListCommand
             parseResult.GetValue(CliApplication.VerboseOption),
             async (diagnostics, ct) =>
             {
-                if (parseResult.GetResult(available) is null)
+                var wantsInstalled = parseResult.GetValue(installed);
+                if ((parseResult.GetResult(available) is null) == !wantsInstalled)
                 {
-                    throw new DotnetScopeException(
-                        ExitCodes.Usage,
-                        "Informe --available. A listagem de instalações (--installed) ainda não está disponível nesta versão.");
+                    throw new DotnetScopeException(ExitCodes.Usage, "Informe exatamente uma opção: --available ou --installed.");
+                }
+
+                if (wantsInstalled)
+                {
+                    return await ListInstalledAsync(services, parseResult.GetValue(installDir), parseResult.GetValue(output) == "json")
+                        .ConfigureAwait(false);
                 }
 
                 var source = services.CreateMetadataSource(
@@ -83,6 +91,51 @@ internal static class ListCommand
 
         return command;
     }
+
+    private static async Task<int> ListInstalledAsync(CliServices services, string? installDir, bool json)
+    {
+        EnvCommand.EnsureSupported(services);
+        var home = services.HomeDirectory();
+        var userRoot = InstallLocations.ValidateUserRoot(installDir ?? InstallLocations.DefaultUserRoot(home), home);
+        var records = services.CreateManifestStore().Read();
+        var roots = new[] { userRoot }.Concat(records.Select(r => r.Root)).Concat(services.SystemRoots()).Where(Directory.Exists);
+        var items = InstalledInventory.Scan(roots, records, home, services.IsPackageManaged);
+
+        if (json)
+        {
+            var document = new InstalledJson(items.Select(i => new InstalledItemJson(
+                i.Component.ToName(), i.Version.ToString(), OriginName(i.Origin), i.ManagedBy, i.Root, i.Present)).ToList());
+            await services.Output.WriteLineAsync(JsonSerializer.Serialize(document, F4JsonContext.Default.InstalledJson)).ConfigureAwait(false);
+            return ExitCodes.Success;
+        }
+
+        if (items.Count == 0)
+        {
+            await services.Output.WriteLineAsync("Nenhum SDK ou runtime .NET encontrado.").ConfigureAwait(false);
+            return ExitCodes.Success;
+        }
+
+        var table = new TextTable("Componente", "Versão", "Origem", "Raiz", "Observação");
+        foreach (var item in items)
+        {
+            table.Add(
+                item.Component.ToName(),
+                item.Version.ToString(),
+                OriginName(item.Origin),
+                item.Root,
+                !item.Present ? "registrado, mas ausente (dotnetscope doctor)" : item.ManagedBy is null ? "-" : $"instalado com {item.ManagedBy}");
+        }
+
+        await table.WriteAsync(services.Output).ConfigureAwait(false);
+        return ExitCodes.Success;
+    }
+
+    private static string OriginName(InstallOrigin origin) => origin switch
+    {
+        InstallOrigin.DotnetScope => "dotnetscope",
+        InstallOrigin.Package => "package",
+        _ => "external",
+    };
 
     private static async Task<int> ListChannelsAsync(
         CliServices services,

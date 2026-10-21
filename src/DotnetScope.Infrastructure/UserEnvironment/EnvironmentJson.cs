@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace DotnetScope.Infrastructure.UserEnvironment;
 
 // Estado persistido para remover o bloco restaurando o perfil byte a byte.
-internal sealed record EnvironmentState(int SchemaVersion, List<ProfileState> Profiles);
+internal sealed record EnvironmentState(int SchemaVersion, List<ProfileState> Profiles, string? DotnetRoot = null);
 
 internal sealed record ProfileState(string Path, bool Created, bool LeadingNewline);
 

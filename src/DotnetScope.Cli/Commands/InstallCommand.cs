@@ -17,9 +17,10 @@ internal static class InstallCommand
 {
     public static Command Build(CliServices services)
     {
-        var component = new Argument<string>("componente")
+        var component = new Argument<string?>("componente")
         {
             Description = "sdk, runtime, aspnetcore ou windowsdesktop; ou a forma compacta SDK-10.0.400",
+            Arity = ArgumentArity.ZeroOrOne,
         };
         var version = new Argument<string?>("versão")
         {
@@ -49,6 +50,18 @@ internal static class InstallCommand
         };
         var envConflict = EnvCommand.ConflictOption();
         var telemetry = EnvCommand.TelemetryOption();
+        var archive = new Option<string?>("--archive")
+        {
+            Description = "Instala a partir de um arquivo .tar.gz local, sem consultar o metadata (exige versão exata e --sha512)",
+            HelpName = "arquivo",
+        };
+        var sha512 = new Option<string?>("--sha512") { Description = "SHA-512 esperado do arquivo de --archive", HelpName = "hash" };
+        var fromGlobalJson = new Option<string?>("--from-global-json")
+        {
+            Description = "Instala o SDK exigido por um global.json (caminho opcional; padrão: procura a partir do diretório atual)",
+            Arity = ArgumentArity.ZeroOrOne,
+            HelpName = "caminho",
+        };
         var output = new Option<string>("--output")
         {
             Description = "Formato de saída: text ou json",
@@ -59,7 +72,7 @@ internal static class InstallCommand
         var command = new Command("install", "Instala um SDK ou runtime .NET a partir do arquivo oficial verificado por SHA-512")
         {
             component, version, scope, installDir, prerelease, offline, dryRun, yes, allowRoot, configureEnv, envConflict, telemetry,
-            output,
+            archive, sha512, fromGlobalJson, output,
         };
 
         command.SetAction((parseResult, cancellationToken) => CliApplication.ExecuteAsync(
@@ -69,7 +82,7 @@ internal static class InstallCommand
                 services,
                 diagnostics,
                 new InstallOptions(
-                    parseResult.GetValue(component)!,
+                    parseResult.GetValue(component),
                     parseResult.GetValue(version),
                     parseResult.GetValue(scope) == "global" ? InstallScope.Global : InstallScope.User,
                     parseResult.GetValue(installDir),
@@ -81,7 +94,11 @@ internal static class InstallCommand
                     parseResult.GetValue(output) == "json",
                     parseResult.GetValue(configureEnv),
                     EnvCommand.ParsePolicy(parseResult.GetValue(envConflict)),
-                    parseResult.GetValue(telemetry)),
+                    parseResult.GetValue(telemetry),
+                    parseResult.GetValue(archive),
+                    parseResult.GetValue(sha512),
+                    parseResult.GetResult(fromGlobalJson) is not null,
+                    parseResult.GetValue(fromGlobalJson)),
                 ct),
             cancellationToken));
 
@@ -94,7 +111,6 @@ internal static class InstallCommand
         InstallOptions options,
         CancellationToken cancellationToken)
     {
-        var request = ParseRequest(options.Component, options.Version);
         if (options.Scope == InstallScope.Global)
         {
             throw new DotnetScopeException(ExitCodes.Usage, "O escopo global ainda não está disponível nesta versão; use --scope user.");
@@ -106,6 +122,7 @@ internal static class InstallCommand
             throw new DotnetScopeException(ExitCodes.NotFound, "A instalação no Windows ainda não está disponível nesta versão.");
         }
 
+        ValidateSourceOptions(options);
         if (services.IsRoot() && !options.AllowRoot)
         {
             throw new DotnetScopeException(
@@ -115,21 +132,10 @@ internal static class InstallCommand
 
         var home = services.HomeDirectory();
         var root = InstallLocations.ValidateUserRoot(options.InstallDir ?? InstallLocations.DefaultUserRoot(home), home);
+        var (artifact, requestLabel, needsConfirmation) = await ResolveAsync(services, diagnostics, options, rid, cancellationToken)
+            .ConfigureAwait(false);
 
-        var source = services.CreateMetadataSource(new MetadataOptions(options.Offline), diagnostics);
-        ResolvedArtifact artifact;
-        try
-        {
-            artifact = await new VersionResolver(source)
-                .ResolveAsync(request, new ResolveOptions(rid, options.AllowPrerelease), cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            (source as IDisposable)?.Dispose();
-        }
-
-        if (artifact.Channel.Phase == SupportPhase.Eol)
+        if (artifact.Channel?.Phase == SupportPhase.Eol)
         {
             diagnostics.Warning($"o canal {artifact.Channel.Channel} está fora de suporte e não recebe correções de segurança.");
         }
@@ -159,7 +165,7 @@ internal static class InstallCommand
                     [],
                     environmentPlan.Conflicts,
                     null);
-            await WriteAsync(services, options, request, artifact, root, home, status, null, [], planned).ConfigureAwait(false);
+            await WriteAsync(services, options, requestLabel, artifact, root, home, status, null, [], planned).ConfigureAwait(false);
             return ExitCodes.Success;
         }
 
@@ -169,9 +175,9 @@ internal static class InstallCommand
             diagnostics.Warning($"dependência nativa não encontrada: {dependency}.");
         }
 
-        if (!installed && request.Version is not ExactVersionSpec)
+        if (!installed && needsConfirmation)
         {
-            Confirm(services, options, request, artifact, root);
+            Confirm(services, options, requestLabel, artifact, root);
         }
 
         IProgress<DownloadProgress>? progress = !options.Json && services.Prompt.IsInteractive
@@ -196,7 +202,7 @@ internal static class InstallCommand
             environment = await EnvironmentSetup.ApplyAsync(services, configurator, fresh, diagnostics, cancellationToken).ConfigureAwait(false);
         }
 
-        await WriteAsync(services, options, request, artifact, root, home, statusName, result, missing, environment).ConfigureAwait(false);
+        await WriteAsync(services, options, requestLabel, artifact, root, home, statusName, result, missing, environment).ConfigureAwait(false);
 
         if (!result.Validation.Succeeded)
         {
@@ -209,8 +215,94 @@ internal static class InstallCommand
         return ExitCodes.Success;
     }
 
-    private static ComponentRequest ParseRequest(string component, string? version)
+    private static void ValidateSourceOptions(InstallOptions options)
     {
+        if (options.FromGlobalJson && options.Archive is not null)
+        {
+            throw new DotnetScopeException(ExitCodes.Usage, "--from-global-json e --archive não podem ser usados juntos.");
+        }
+
+        if (options.Sha512 is not null && options.Archive is null)
+        {
+            throw new DotnetScopeException(ExitCodes.Usage, "--sha512 só é usado com --archive.");
+        }
+
+        if (options.Archive is not null && (options.Sha512 is not { Length: 128 } hash || !hash.All(char.IsAsciiHexDigit)))
+        {
+            throw new DotnetScopeException(ExitCodes.Usage, "--archive exige --sha512 com 128 caracteres hexadecimais.");
+        }
+
+        if (options.FromGlobalJson && (options.Version is not null || (options.Component is not null && options.Component != "sdk")))
+        {
+            throw new DotnetScopeException(ExitCodes.Usage, "--from-global-json instala somente o SDK; não informe versão nem outro componente.");
+        }
+    }
+
+    private static async Task<(ResolvedArtifact Artifact, string Label, bool NeedsConfirmation)> ResolveAsync(
+        CliServices services,
+        IDiagnosticSink diagnostics,
+        InstallOptions options,
+        string rid,
+        CancellationToken cancellationToken)
+    {
+        if (options.Archive is not null)
+        {
+            var request = ParseRequest(options.Component, options.Version);
+            if (request.Version is not ExactVersionSpec exact)
+            {
+                throw new DotnetScopeException(ExitCodes.Usage, "--archive exige a versão exata do componente contido no arquivo.");
+            }
+
+            var path = Path.GetFullPath(options.Archive, services.CurrentDirectory());
+            if (!File.Exists(path))
+            {
+                throw new DotnetScopeException(ExitCodes.NotFound, $"Arquivo não encontrado: {path}.");
+            }
+
+            if (!path.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new DotnetScopeException(ExitCodes.Usage, $"--archive aceita somente .tar.gz nesta plataforma: {path}.");
+            }
+
+            var file = new ReleaseFile(Path.GetFileName(path), rid, new Uri(path), options.Sha512!.ToLowerInvariant(), IsTrusted: true);
+            return (new ResolvedArtifact(request.Component, exact.Version, null, exact.Version.ToString(), rid, file), $"{request} (arquivo local)", false);
+        }
+
+        var source = services.CreateMetadataSource(new MetadataOptions(options.Offline), diagnostics);
+        try
+        {
+            var resolver = new VersionResolver(source);
+            var resolveOptions = new ResolveOptions(rid, options.AllowPrerelease);
+            if (options.FromGlobalJson)
+            {
+                var sdk = GlobalJsonReader.Read(options.GlobalJsonPath, services.CurrentDirectory());
+                diagnostics.Verbose($"global.json: {sdk.Path} (version {sdk.Version}, rollForward {RollForwardPolicies.ToName(sdk.RollForward)})");
+                var effective = sdk with { AllowPrerelease = sdk.AllowPrerelease || options.AllowPrerelease };
+                var artifact = await resolver.ResolveGlobalJsonAsync(effective, resolveOptions with { AllowPrerelease = effective.AllowPrerelease }, cancellationToken)
+                    .ConfigureAwait(false);
+                var label = $"global.json {sdk.Version?.ToString() ?? "(sem versão)"} ({RollForwardPolicies.ToName(sdk.RollForward)})";
+                return (artifact, label, artifact.Version != sdk.Version);
+            }
+
+            var parsed = ParseRequest(options.Component, options.Version);
+            var resolved = await resolver.ResolveAsync(parsed, resolveOptions, cancellationToken).ConfigureAwait(false);
+            return (resolved, parsed.Version.ToString(), parsed.Version is not ExactVersionSpec);
+        }
+        finally
+        {
+            (source as IDisposable)?.Dispose();
+        }
+    }
+
+    private static ComponentRequest ParseRequest(string? component, string? version)
+    {
+        if (component is null)
+        {
+            throw new DotnetScopeException(
+                ExitCodes.Usage,
+                "Informe componente e versão (por exemplo, sdk 10.0.400), a forma compacta SDK-10.0.400 ou --from-global-json.");
+        }
+
         if (version is null)
         {
             var dash = component.IndexOf('-', StringComparison.Ordinal);
@@ -237,7 +329,7 @@ internal static class InstallCommand
     private static void Confirm(
         CliServices services,
         InstallOptions options,
-        ComponentRequest request,
+        string request,
         ResolvedArtifact artifact,
         string root)
     {
@@ -263,7 +355,7 @@ internal static class InstallCommand
     private static async Task WriteAsync(
         CliServices services,
         InstallOptions options,
-        ComponentRequest request,
+        string request,
         ResolvedArtifact artifact,
         string root,
         string home,
@@ -277,7 +369,7 @@ internal static class InstallCommand
             var document = new InstallJson(
                 status,
                 artifact.Component.ToName(),
-                request.Version.ToString(),
+                request,
                 artifact.Version.ToString(),
                 artifact.Rid,
                 options.Scope == InstallScope.Global ? "global" : "user",
@@ -334,7 +426,7 @@ internal static class InstallCommand
     private static EnvironmentOutcome Disabled(EnvironmentTarget target) => new(target, "disabled", null, [], [], [], null);
 
     private sealed record InstallOptions(
-        string Component,
+        string? Component,
         string? Version,
         InstallScope Scope,
         string? InstallDir,
@@ -346,5 +438,9 @@ internal static class InstallCommand
         bool Json,
         bool ConfigureEnv,
         EnvConflictPolicy EnvConflict,
-        bool TelemetryOptOut);
+        bool TelemetryOptOut,
+        string? Archive,
+        string? Sha512,
+        bool FromGlobalJson,
+        string? GlobalJsonPath);
 }

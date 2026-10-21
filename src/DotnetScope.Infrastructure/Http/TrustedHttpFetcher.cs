@@ -302,7 +302,7 @@ internal sealed class TrustedHttpFetcher : IDisposable
         }
     }
 
-    private static async Task VerifySha512Async(string path, string expectedSha512, Uri url, CancellationToken cancellationToken)
+    internal static async Task VerifySha512Async(string path, string expectedSha512, Uri url, CancellationToken cancellationToken)
     {
         byte[] expected;
         try

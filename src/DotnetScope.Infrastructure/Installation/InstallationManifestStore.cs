@@ -19,9 +19,25 @@ public sealed class InstallationManifestStore
 
     public IReadOnlyList<InstallationRecord> Read() => Load().Installations.Select(ToRecord).ToList();
 
-    public async Task AddAsync(InstallationRecord record, IDiagnosticSink diagnostics, CancellationToken cancellationToken)
+    public Task AddAsync(InstallationRecord record, IDiagnosticSink diagnostics, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(record);
+        return UpdateAsync(
+            records => records
+                .Where(r => !(string.Equals(r.Root, record.Root, StringComparison.Ordinal) && r.Component == record.Component && r.Version == record.Version))
+                .Append(record)
+                .ToList(),
+            diagnostics,
+            cancellationToken);
+    }
+
+    /// <summary>Lê, transforma e grava o manifesto atomicamente sob o lock entre processos.</summary>
+    public async Task UpdateAsync(
+        Func<IReadOnlyList<InstallationRecord>, IReadOnlyList<InstallationRecord>> change,
+        IDiagnosticSink diagnostics,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(change);
         var directory = System.IO.Path.GetDirectoryName(Path)!;
         CreatePrivateDirectory(directory);
         using var _ = await InstallLock.AcquireAsync(
@@ -30,12 +46,8 @@ public sealed class InstallationManifestStore
             diagnostics,
             cancellationToken).ConfigureAwait(false);
 
-        var document = Load();
-        document.Installations.RemoveAll(entry =>
-            string.Equals(entry.Root, record.Root, StringComparison.Ordinal)
-            && entry.Component == record.Component.ToName()
-            && entry.Version == record.Version);
-        document.Installations.Add(ToEntry(record));
+        var current = Load().Installations.Select(ToRecord).ToList();
+        var document = new ManifestDocument(SchemaVersion, change(current).Select(ToEntry).ToList());
 
         var temporary = System.IO.Path.Combine(directory, $".manifest.{Guid.NewGuid():N}.tmp");
         try
@@ -115,7 +127,14 @@ public sealed class InstallationManifestStore
         [.. record.AddedPaths],
         record.HostReplaced);
 
-    private static InstallationRecord ToRecord(ManifestEntry entry) => new(
+    private static InstallationRecord ToRecord(ManifestEntry entry) =>
+        (entry.Paths ?? []).Concat(entry.AddedPaths ?? []).All(DotnetLayout.IsValidLeaf) && System.IO.Path.IsPathFullyQualified(entry.Root)
+            ? CreateRecord(entry)
+            : throw new DotnetScopeException(
+                ExitCodes.UnexpectedError,
+                $"Manifesto com caminho inválido em {entry.Component} {entry.Version}; ele não será usado nem sobrescrito.");
+
+    private static InstallationRecord CreateRecord(ManifestEntry entry) => new(
         ComponentKindNames.TryParse(entry.Component, out var component)
             ? component
             : throw new DotnetScopeException(ExitCodes.UnexpectedError, $"Componente desconhecido no manifesto: {entry.Component}."),

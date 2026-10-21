@@ -30,6 +30,7 @@ public sealed class InstallFlowTests : IDisposable
         Publish("10.0.13", ComponentKind.Sdk, "10.0.402", SyntheticArchives.Sdk("10.0.402", "10.0.13"));
         Publish("10.0.12", ComponentKind.Sdk, "10.0.401", SyntheticArchives.Sdk("10.0.401", "10.0.12"));
         Publish("10.0.13", ComponentKind.Runtime, "10.0.13", SyntheticArchives.Runtime("10.0.13"));
+        Publish("10.0.13", ComponentKind.Sdk, "10.0.113", SyntheticArchives.Sdk("10.0.113", "10.0.13"));
     }
 
     private string Root => Path.Combine(_home, ".dotnet");
@@ -403,8 +404,16 @@ public sealed class InstallFlowTests : IDisposable
     {
         using var output = new StringWriter();
         using var error = new StringWriter();
-        var services = new CliServices(output, error, (_, _) => _source, () => "linux-x64")
+        var services = new CliServices(
+            output,
+            error,
+            (_, _) => _source,
+            () => "linux-x64")
         {
+            CreateManifestStore = () => new InstallationManifestStore(ManifestPath),
+            SystemRoots = () => [],
+            IsPackageManaged = _ => false,
+            CurrentDirectory = () => _home,
             CreateInstaller = (diagnostics, progress) =>
             {
                 var installer = new ArchiveInstaller(

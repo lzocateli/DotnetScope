@@ -143,6 +143,11 @@ public sealed class UnixEnvironmentConfigurator(EnvironmentLayout layout)
         }
 
         var state = LoadState();
+        if (plan.Target is not null)
+        {
+            state = state with { DotnetRoot = plan.Target.DotnetRoot };
+        }
+
         foreach (var profile in plan.Profiles)
         {
             if (profile.IsSymlink)
@@ -186,6 +191,25 @@ public sealed class UnixEnvironmentConfigurator(EnvironmentLayout layout)
 
         SaveState(plan.Target is null ? new EnvironmentState(1, []) : state);
         return new EnvironmentApplyResult(changed, backups);
+    }
+
+    /// <summary>Raiz configurada pelo último <c>env apply</c>, ou nula se o ambiente não está configurado.</summary>
+    public string? ConfiguredRoot()
+    {
+        if (!File.Exists(Layout.EnvScript))
+        {
+            return null;
+        }
+
+        if (LoadState().DotnetRoot is { } root)
+        {
+            return root;
+        }
+
+        // Estados gravados antes do campo DotnetRoot: lê a atribuição gerada no env.sh.
+        const string prefix = "export DOTNET_ROOT='";
+        var line = File.ReadLines(Layout.EnvScript).FirstOrDefault(l => l.StartsWith(prefix, StringComparison.Ordinal) && l.EndsWith('\''));
+        return line?[prefix.Length..^1].Replace("'\\''", "'", StringComparison.Ordinal);
     }
 
     private IEnumerable<ThirdPartyAssignment> FindThirdParty()

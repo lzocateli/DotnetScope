@@ -315,7 +315,7 @@ runners efêmeros.
 | F1 | Parsing, cliente de metadata, cache, `list --available` | resolução correta com fixtures, incluindo `lts`/`sts`/feature band | concluída ([referência](cli.md)) |
 | F2 | `install` user Linux por arquivo, verificação, extração segura, manifesto, lock | SDK funcional em container limpo; casos maliciosos rejeitados | concluída (E2E Ubuntu 24.04 e Fedora 41) |
 | F3 | `--configure-env` (Linux/macOS), `env show\|apply\|remove`, detecção de conflito | casos obrigatórios da seção 12 verdes | concluída (E2E bash/zsh/fish em Ubuntu 24.04 e Fedora 41) |
-| F4 | `uninstall`, `list --installed`, `doctor [--repair]`, `install --archive <arquivo> --sha512 <hash>` (seção 7), `install --from-global-json [caminho]` (seção 3, com `rollForward`) | reversão completa e origem correta na listagem; instalação offline verificada; versão resolvida conforme `global.json` | pendente |
+| F4 | `uninstall`, `list --installed`, `doctor [--repair]`, `install --archive <arquivo> --sha512 <hash>` (seção 7), `install --from-global-json [caminho]` (seção 3, com `rollForward`) | reversão completa e origem correta na listagem; instalação offline verificada; versão resolvida conforme `global.json` | concluída (E2E com remoção completa em Ubuntu 24.04 e Fedora 41) |
 | F5 | Publicação AOT multi-RID, `install.sh`/`install.ps1`, release no GitHub | binários rodam sem .NET; checksums publicados | pendente |
 | F6 | Windows user (zip + registro + `WM_SETTINGCHANGE`) | `dotnet` disponível em novo terminal; reversão do registro | pendente |
 | F7 | Global: `apt`, instalador Windows, `.pkg`, instalação por arquivo (D4), `--install-deps` | instalação elevada validada; mistura com pacote recusada | pendente |
@@ -344,6 +344,14 @@ com milestone, e é entregue por PR com as evidências do template.
   - além dos perfis da seção 4.2, `~/.bash_profile` e `~/.bash_login` recebem o
     bloco quando existem, porque o bash de login não lê `~/.profile` nesse caso;
   - a remoção exata usa o estado em `~/.local/state/dotnetscope/env-state.json`.
+- Decisões de implementação da F4:
+  - a posse das folhas compartilhadas é transferida para a instalação que
+    continua usando-as, o que garante que a última remoção apaga tudo o que o
+    DotnetScope criou;
+  - `doctor` retorna o código `6` quando restam erros;
+  - `allowPrerelease` do `global.json` só vale quando `true` explícito;
+  - arquivos de usuário que o SDK cria em `~/.dotnet` (`DOTNET_CLI_HOME`) nunca
+    são removidos.
 - A configuração de ambiente no Windows (registro) continua na F6 e a global
   (`/etc/profile.d`, `/etc/paths.d`, `install_location`) na F7.
 - O metadata oficial publica assinatura PKCS#7 destacada (campo `signature`,

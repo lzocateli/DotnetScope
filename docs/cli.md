@@ -105,6 +105,8 @@ o escopo `global` e o Windows retornam erro.
 ```text
 dotnetscope install <componente> <versão> [opções]
 dotnetscope install <COMPONENTE-versão> [opções]
+dotnetscope install <componente> <versão-exata> --archive <arquivo.tar.gz> --sha512 <hash> [opções]
+dotnetscope install --from-global-json [caminho] [opções]
 ```
 
 | Opção | Padrão | Descrição |
@@ -116,6 +118,9 @@ dotnetscope install <COMPONENTE-versão> [opções]
 | `--dry-run` | `false` | Mostra o plano sem criar diretórios nem baixar. |
 | `-y`, `--yes` | `false` | Confirma quando a versão resolvida difere da informada (canal, feature band, `lts`, `sts`). |
 | `--allow-root` | `false` | Permite o escopo user executando como root. |
+| `--archive` | — | Instala offline a partir de um `.tar.gz` local, sem consultar o metadata. Exige versão exata e `--sha512`. |
+| `--sha512` | — | SHA-512 esperado do arquivo de `--archive` (128 caracteres hexadecimais). |
+| `--from-global-json` | — | Instala o SDK exigido por um `global.json`. Aceita arquivo ou diretório; sem valor, procura a partir do diretório atual em direção à raiz. |
 | `--configure-env` | `true` | Configura `DOTNET_ROOT` e `PATH` nos perfis (seção [`env`](#env)); `false` só imprime as instruções. |
 | `--env-conflict` | `fail` | `fail`, `override` ou `skip` quando terceiros definem outro `DOTNET_ROOT`. |
 | `--telemetry-optout` | `false` | Inclui `DOTNET_CLI_TELEMETRY_OPTOUT=1` no ambiente. |
@@ -123,6 +128,37 @@ dotnetscope install <COMPONENTE-versão> [opções]
 
 Componentes e especificações de versão seguem as mesmas regras de
 [`list --available`](#especificação-de-versão).
+
+### Instalação offline (`--archive`)
+
+O arquivo local é copiado para o staging privado e o SHA-512 é verificado na
+cópia (código `5` se divergir), que então é extraída. Isso evita que o arquivo
+original seja trocado entre a verificação e a extração. O metadata não é
+consultado. Se o arquivo não contiver `sdk/<versão>` ou
+`shared/<framework>/<versão>` correspondente ao pedido, a instalação é recusada
+com código `5`. O manifesto registra a URL `file://` do arquivo.
+
+### `global.json` (`--from-global-json`)
+
+São lidos `sdk.version`, `sdk.rollForward` e `sdk.allowPrerelease`. Comentários
+e vírgulas finais são aceitos. Sem `sdk.version`, a política é `latestMajor`; com
+versão e sem `rollForward`, `latestPatch`. Prerelease só é considerado com
+`"allowPrerelease": true` ou `--prerelease`.
+
+| `rollForward` | SDK instalado (com arquivo para o RID) |
+| --- | --- |
+| `disable` | Exatamente a versão pedida |
+| `patch` | A versão pedida; senão o último patch da mesma feature band |
+| `latestPatch` | O último patch da mesma feature band (≥ pedido) |
+| `feature` | O último patch da feature band pedida; senão o da próxima feature band do mesmo canal |
+| `latestFeature` | A maior versão do mesmo canal (≥ pedido) |
+| `minor` | Como `feature`; senão a menor feature band do próximo canal do mesmo major |
+| `latestMinor` | A maior versão do mesmo major |
+| `major` | Como `minor`, permitindo majors superiores |
+| `latestMajor` | A maior versão disponível |
+
+Se a versão escolhida diferir de `sdk.version`, a CLI pede confirmação ou
+`--yes`, como nas demais versões não exatas.
 
 ### Comportamento
 
@@ -307,6 +343,104 @@ Valores de `status`:
 
 O objeto `environment` da saída JSON do `install` tem o mesmo formato.
 
+## `list --installed`
+
+```text
+dotnetscope list --installed [--install-dir <dir>] [--output text|json]
+```
+
+Lista SDKs e runtimes encontrados nas raízes abaixo, com a origem de cada um:
+
+- a raiz do usuário (`~/.dotnet` ou `--install-dir`);
+- as raízes registradas no manifesto;
+- as raízes do sistema (`/usr/lib/dotnet`, `/usr/share/dotnet`,
+  `/usr/local/share/dotnet`, `/usr/lib64/dotnet` e `/opt/dotnet`).
+
+| Origem | Significado |
+| --- | --- |
+| `dotnetscope` | Instalado pelo DotnetScope. Pode ter registro próprio ou ter chegado com outra instalação; nesse caso, `managedBy` mostra qual, por exemplo `sdk 10.0.402`. |
+| `external` | Instalado por outra ferramenta (`dotnet-install`, Ansible, IDE) ou em raiz que não pertence a pacote do sistema. |
+| `package` | Em raiz cujo `dotnet` pertence a um pacote do sistema, conforme `dpkg-query -S` ou `rpm -qf`. |
+
+Registros do manifesto cujos arquivos não existem aparecem com `present: false`;
+use `dotnetscope doctor`. É uma operação somente leitura.
+
+```json
+{ "installations": [ { "component": "sdk", "version": "10.0.402", "origin": "dotnetscope", "managedBy": null, "root": "/home/usuario/.dotnet", "present": true } ] }
+```
+
+## `uninstall`
+
+```text
+dotnetscope uninstall <componente> <versão> [--install-dir <dir>] [--force] [--keep-env]
+                      [--dry-run] [--allow-root] [--output text|json]
+dotnetscope uninstall <COMPONENTE-versão> [opções]
+```
+
+A versão precisa ser exata (código `2` caso contrário). Sob o lock da raiz, a
+remoção segue estas regras:
+
+- Apaga somente pastas criadas pelo DotnetScope (`addedPaths` de alguma
+  instalação registrada) que nenhuma outra instalação registrada na mesma raiz
+  contém.
+- Pastas ainda usadas por outra instalação permanecem e passam a pertencer a
+  ela, de modo que a última remoção apaga tudo o que o DotnetScope criou.
+  Exemplos: o runtime e o `host/fxr` compartilhados por dois SDKs.
+- Pastas que já existiam antes da instalação nunca são removidas. O mesmo vale
+  para arquivos de usuário que o SDK cria em `~/.dotnet` (que também é o
+  `DOTNET_CLI_HOME`).
+- As pastas vão primeiro para uma lixeira no staging, com journal gravado antes
+  do primeiro movimento. Se a atualização do manifesto falhar, tudo é restaurado
+  (código `1`).
+- Componente sem registro próprio (instalado por outra ferramenta) exige
+  `--force` (código `6` sem ele) e remove só `sdk/<v>` ou
+  `shared/<framework>/<v>`. Se a pasta fizer parte de uma instalação gerenciada,
+  como o runtime trazido por um SDK, a remoção é recusada mesmo com `--force`.
+- Componente ausente retorna código `3`.
+- Quando não resta instalação gerenciada na raiz e o ambiente aponta para ela, o
+  bloco de `DOTNET_ROOT`/`PATH` sai dos perfis, como em `env remove`. Use
+  `--keep-env` para mantê-lo.
+
+```json
+{ "status": "removed", "component": "sdk", "version": "10.0.402", "root": "/home/usuario/.dotnet", "origin": "dotnetscope",
+  "removedPaths": ["sdk/10.0.402"], "keptPaths": [ { "path": "shared/Microsoft.NETCore.App/10.0.13", "usedBy": "sdk 10.0.113" } ],
+  "environment": "unchanged" }
+```
+
+## `doctor`
+
+```text
+dotnetscope doctor [--repair] [--install-dir <dir>] [--output text|json]
+```
+
+Verifica a raiz do usuário e as raízes do manifesto, cada uma sob o seu lock.
+
+| Código | Severidade | Situação | Com `--repair` |
+| --- | --- | --- | --- |
+| `orphan-staging` | aviso | Diretório temporário sem conteúdo da raiz, ou de operação concluída | Apagado (restaura o host se ele faltar) |
+| `interrupted-install` | erro | Instalação interrompida antes do registro no manifesto | Apaga as pastas movidas que ninguém usa e restaura o host do backup |
+| `interrupted-uninstall` | erro | Remoção interrompida | Devolve à raiz as pastas da lixeira se o registro ainda existe; senão, só limpa |
+| `unknown-staging` | erro | Staging com lixeira ou backup, mas sem journal | Não é alterado; verifique manualmente |
+| `invalid-journal` | erro | Journal com caminhos fora da raiz | Não é alterado |
+| `stale-record` | erro | Registro no manifesto sem a pasta do componente | Remove o registro, transfere a posse das pastas ainda usadas e apaga as que ninguém usa |
+| `missing-files` | aviso | Pastas registradas que não existem mais | — |
+| `host-validation` | erro | `dotnet --list-sdks`/`--list-runtimes` não lista o componente | — |
+| `root-busy` | aviso | Outra operação está em andamento na raiz | — |
+| `env-script-missing`, `env-profile-missing`, `env-root-missing`, `login-shell` | aviso | Inconsistências do ambiente | — (use `env apply` ou `env remove`) |
+| `native-dependency` | aviso | Biblioteca nativa ausente | — |
+
+A decisão sobre uma instalação interrompida usa a identidade gravada no journal
+(componente e versão): se o registro existe, a instalação foi concluída. O
+backup do host é sempre lido de `<staging>/backup/dotnet`, nunca de um caminho
+do journal.
+
+O código de saída é `0` quando não restam erros (ou todos foram corrigidos) e
+`6` quando há erros não corrigidos.
+
+```json
+{ "healthy": false, "findings": [ { "code": "stale-record", "severity": "error", "message": "...", "repairable": true, "repaired": false } ] }
+```
+
 ## Manifesto de instalações
 
 | SO | Arquivo |
@@ -359,7 +493,7 @@ nunca é sobrescrito: a instalação é desfeita e a CLI retorna código `1`.
 | `3` | Canal, versão ou artefato inexistente para o RID; plataforma ainda não suportada pelo `install`. |
 | `4` | Falha de rede, metadata indisponível ou malformado, ou ausente no cache com `--offline`. |
 | `5` | Integridade: origem fora da allowlist (metadata, redirect ou arquivo resolvido), SHA-512 divergente ou arquivo recusado na extração. |
-| `6` | Conflito: outra operação em andamento, item existente com tipo incompatível, `DOTNET_ROOT` de terceiros com outro valor, bloco malformado, perfil não UTF-8 ou alterado durante a operação. |
+| `6` | Conflito: `doctor` com erros não corrigidos, `uninstall` de componente externo sem `--force` ou de pasta usada por instalação gerenciada, outra operação em andamento, item existente com tipo incompatível, `DOTNET_ROOT` de terceiros com outro valor, bloco malformado, perfil não UTF-8 ou alterado durante a operação. |
 | `7` | Privilégio inadequado: escopo user como root ou `--install-dir` em local do sistema ou de outro usuário. |
 | `8` | Instalação gravada, mas a validação falhou com dependências nativas ausentes. |
 | `130` | Cancelado pelo usuário (Ctrl+C ou confirmação recusada). |

@@ -21,8 +21,13 @@ internal sealed class LayoutMerger
     private readonly List<string> _createdContainers = [];
     private string? _hostBackup;
 
-    public LayoutMerger(string source, string root, string stagingDirectory, bool windows)
+    private readonly string? _component;
+    private readonly string? _version;
+
+    public LayoutMerger(string source, string root, string stagingDirectory, bool windows, string? component = null, string? version = null)
     {
+        _component = component;
+        _version = version;
         _source = Path.GetFullPath(source);
         _root = Path.GetFullPath(root);
         _backupDirectory = Path.Combine(stagingDirectory, "backup");
@@ -225,7 +230,7 @@ internal sealed class LayoutMerger
 
     private void WriteJournal()
     {
-        var journal = new MergeJournal(_root, _added.ToList(), _hostBackup);
+        var journal = new MergeJournal("install", _root, _added.ToList(), _hostBackup, _component, _version);
         var temporary = _journalPath + ".tmp";
         File.WriteAllText(temporary, JsonSerializer.Serialize(journal, InstallationJsonContext.Default.MergeJournal));
         File.Move(temporary, _journalPath, overwrite: true);
@@ -238,5 +243,15 @@ internal sealed record MergeResult(
     IReadOnlyList<string> Shared,
     bool HostReplaced);
 
-/// <summary>Journal da mesclagem em andamento, mantido no diretório de staging para recuperação.</summary>
-internal sealed record MergeJournal(string Root, IReadOnlyList<string> Added, string? HostBackup);
+/// <summary>
+/// Journal mantido no staging para recuperação pelo <c>doctor</c>. Em instalações, <see cref="Added"/> são as folhas
+/// já movidas para a raiz; em remoções, as folhas já movidas da raiz para a lixeira do staging.
+/// </summary>
+/// <remarks><see cref="Component"/> e <see cref="Version"/> identificam a operação para o doctor saber se ela foi concluída.</remarks>
+internal sealed record MergeJournal(
+    string Operation,
+    string Root,
+    IReadOnlyList<string> Added,
+    string? HostBackup,
+    string? Component = null,
+    string? Version = null);
