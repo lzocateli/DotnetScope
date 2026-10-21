@@ -13,7 +13,10 @@ real, cria e executa uma aplicacao de console, repete a instalacao
 O cenario global (tests/e2e/install-global.sh) roda em outro container limpo,
 como root: recusas sem root e com raiz insegura, conflito de install_location,
 instalacao em /usr/local/share/dotnet, shell de login de usuario comum,
-inventario, doctor e reversao completa de /etc.
+inventario, doctor e reversao completa de /etc. O cenario apt
+(tests/e2e/install-apt.sh) roda somente em imagens Ubuntu: --install-deps,
+SDK e runtime pelas fontes apt configuradas, recusa da mistura com archive,
+remocao pelo apt e ambiente adulterado (APT_CONFIG, PATH) sem efeito.
 
 Baixa os artefatos oficiais (centenas de MiB por imagem). Variaveis de proxy do
 host sao repassadas ao container pelo engine. O host nao e alterado.
@@ -29,7 +32,7 @@ Especificacao do SDK. Padrao: lts.
 Especificacao do runtime instalado lado a lado. Padrao: 9.0.
 
 .PARAMETER Scenario
-user, global ou all. Padrao: all.
+user, global, apt ou all. Padrao: all.
 
 .PARAMETER Engine
 docker ou podman. Padrao: DOTNETSCOPE_CONTAINER_ENGINE, depois Docker e Podman.
@@ -59,7 +62,7 @@ param(
 
     [string] $Runtime = '9.0',
 
-    [ValidateSet('user', 'global', 'all')]
+    [ValidateSet('user', 'global', 'apt', 'all')]
     [string] $Scenario = 'all',
 
     [ValidateSet('docker', 'podman')]
@@ -86,7 +89,8 @@ $binary = Join-Path $repositoryRoot 'artifacts/aot/linux-x64/dotnetscope'
 $scenarios = switch ($Scenario) {
     'user' { @('install-user.sh') }
     'global' { @('install-global.sh') }
-    default { @('install-user.sh', 'install-global.sh') }
+    'apt' { @('install-apt.sh') }
+    default { @('install-user.sh', 'install-global.sh', 'install-apt.sh') }
 }
 if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
     [Console]::Error.WriteLine("Binario nao encontrado: $binary. Execute Invoke-Validation.ps1 -Aot. Use --help.")
@@ -118,6 +122,10 @@ if ($containerEngine -eq 'podman') {
 $failures = @()
 foreach ($name in $Image) {
     foreach ($script in $scenarios) {
+        if ($script -eq 'install-apt.sh' -and $name -notmatch 'ubuntu') {
+            continue
+        }
+
         Write-Output "`n##### E2E $script em $name"
         $scenarioPath = Join-Path $repositoryRoot "tests/e2e/$script"
         & $containerEngine run --rm `

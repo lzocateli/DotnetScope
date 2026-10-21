@@ -5,6 +5,7 @@ using DotnetScope.Core;
 using DotnetScope.Core.Releases;
 using DotnetScope.Core.Versions;
 using DotnetScope.Infrastructure.Installation;
+using DotnetScope.Infrastructure.SystemScope;
 using DotnetScope.Infrastructure.UserEnvironment;
 
 namespace DotnetScope.Cli.Commands;
@@ -46,6 +47,13 @@ internal static class UninstallCommand
                     root = globalRoot;
                     manifest = new InstallationManifestStore(layout.ManifestFile);
                     configurator = services.CreateSystemEnvironment(layout);
+                    // Pacotes apt não têm raiz escolhida pelo usuário: só entram quando --install-dir não foi informado.
+                    if (parseResult.GetValue(installDir) is null
+                        && await FindAptRecordAsync(services, manifest, request.Component, request.Version, ct).ConfigureAwait(false) is { } aptRecord)
+                    {
+                        return await RemoveAptAsync(services, manifest, aptRecord, parseResult.GetValue(dryRun), parseResult.GetValue(output) == "json", diagnostics, ct)
+                            .ConfigureAwait(false);
+                    }
                 }
                 else
                 {
@@ -110,6 +118,71 @@ internal static class UninstallCommand
             },
             cancellationToken));
         return command;
+    }
+
+    /// <summary>
+    /// Registro apt do componente cuja versão instalada hoje (o apt pode ter atualizado o pacote desde a instalação)
+    /// é a pedida; um registro cujo pacote já não está instalado também casa pela versão registrada.
+    /// </summary>
+    private static async Task<Core.Installation.InstallationRecord?> FindAptRecordAsync(
+        CliServices services, InstallationManifestStore manifest, ComponentKind component, DotnetVersion version, CancellationToken cancellationToken)
+    {
+        foreach (var record in manifest.Read().Where(r => r.Component == component))
+        {
+            if (AptPackages.PackageOf(record) is not { } package)
+            {
+                continue;
+            }
+
+            var current = await AptPackages.InstalledVersionAsync(services.CommandRunner, package, cancellationToken).ConfigureAwait(false);
+            var effective = current is null ? record.Version : AptPackages.UpstreamVersion(current);
+            if (effective == version.ToString())
+            {
+                return record;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Instalação feita pela estratégia apt: remove o pacote registrado com apt-get e o registro do manifesto.</summary>
+    private static async Task<int> RemoveAptAsync(
+        CliServices services,
+        InstallationManifestStore manifest,
+        Core.Installation.InstallationRecord record,
+        bool dryRun,
+        bool json,
+        IDiagnosticSink diagnostics,
+        CancellationToken cancellationToken)
+    {
+        var package = AptPackages.PackageOf(record)!;
+        if (!dryRun)
+        {
+            if (await AptPackages.InstalledVersionAsync(services.CommandRunner, package, cancellationToken).ConfigureAwait(false) is not null)
+            {
+                await AptPackages.RemoveAsync(services.CommandRunner, package, cancellationToken).ConfigureAwait(false);
+            }
+
+            await manifest.UpdateAsync(
+                records => records.Where(r => AptPackages.PackageOf(r) != package).ToList(),
+                diagnostics,
+                CancellationToken.None).ConfigureAwait(false);
+        }
+
+        if (json)
+        {
+            var document = new UninstallJson(
+                dryRun ? "planned" : "removed", record.Component.ToName(), record.Version, record.Root, "apt", [package], [], "unchanged");
+            await services.Output.WriteLineAsync(JsonSerializer.Serialize(document, F4JsonContext.Default.UninstallJson)).ConfigureAwait(false);
+        }
+        else
+        {
+            await services.Output.WriteLineAsync(dryRun
+                ? $"Plano: remover o pacote {package} (apt-get remove)."
+                : $"Removido: pacote {package} (apt-get remove); dependências instaladas pelo apt permanecem.").ConfigureAwait(false);
+        }
+
+        return ExitCodes.Success;
     }
 
     private static (ComponentKind Component, DotnetVersion Version) ParseExact(string component, string? version)

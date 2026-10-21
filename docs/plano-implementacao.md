@@ -327,7 +327,7 @@ runners efêmeros.
 | F5 | Publicação AOT multi-RID, `install.sh`/`install.ps1`, release no GitHub | binários rodam sem .NET; checksums publicados | concluída (smoke em Ubuntu 18.04, Rocky 8, Debian 12, Alpine 3.17/3.24 e runners Windows/macOS; [processo de release](release.md)) |
 | F6 | Windows user (zip + registro + `WM_SETTINGCHANGE`) | `dotnet` disponível em novo terminal; reversão do registro | concluída (testes nativos e E2E em `windows-2025`; [referência](cli.md#windows)) |
 | F7a | Global Linux por arquivo (D4): elevação, diretórios confiáveis, estado e cache globais, `/etc/profile.d`, `install_location`, `uninstall`/`env`/`list`/`doctor` globais | R03, R05–R09, R13, R14 (parcial), R17, R18 (`archive`) e R20 do [modelo de ameaças](modelo-de-ameacas-f7.md) com testes negativos; E2E Ubuntu 24.04 e Fedora 41 | concluída |
-| F7b | Global Linux por `apt` (`--source auto\|archive\|apt`) e `--install-deps` | R10–R12, R19 | pendente |
+| F7b | Global Linux por `apt` (`--source auto\|archive\|apt`) e `--install-deps` | R10–R12, R19 | concluída (E2E apt em Ubuntu 24.04) |
 | F7c | Global Windows: instalador `.exe` com Authenticode e `archive` com `HKLM` | R01–R04, R10, R16, R18 | pendente |
 | F7d | Global macOS: `.pkg` com assinatura e `archive` com `/etc/paths.d` | R01–R03, R10, R16 | pendente |
 | F8 | macOS user | E2E em runner macOS | pendente |
@@ -382,6 +382,19 @@ com milestone, e é entregue por PR com as evidências do template.
     porque o Windows PowerShell 5.1 pode não habilitá-lo por padrão;
   - smoke de `linux-arm64` e `win-arm64` roda em runners Arm64 nativos
     (`ubuntu-24.04-arm`, `windows-11-arm`), sem emulação.
+- Decisões de implementação da F7b:
+  - `--source auto` usa o `apt` somente quando o candidato é exatamente a versão
+    que o metadata resolveria (por exemplo, `dotnet-runtime-10.0` 10.0.13 no
+    Ubuntu 24.04); o SDK do Ubuntu (faixa 1xx) só é escolhido com `--source apt`;
+  - instalações por pacote não recebem ambiente do dotnetscope (status
+    `package`); a remoção usa `apt-get remove` apenas do pacote registrado;
+  - os gerenciadores de pacotes recebem somente as variáveis de proxy do
+    ambiente, necessárias em redes corporativas; os pacotes são verificados por
+    assinatura pelo próprio gerenciador;
+  - pacotes já instalados não são registrados; a remoção é simulada e recusada
+    se levaria dependentes; registros apt casam pela versão instalada hoje;
+  - `--install-deps` roda antes da resolução da versão, porque `ca-certificates`
+    e OpenSSL são necessários para baixar o metadata, e cobre `apt`, `dnf` e `apk`.
 - Decisões de implementação da F7a:
   - a F7 foi dividida em F7a a F7d (Linux por arquivo, `apt`, Windows e macOS)
     para validar cada sistema separadamente;

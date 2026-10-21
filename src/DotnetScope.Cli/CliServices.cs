@@ -59,6 +59,12 @@ internal sealed record CliServices(
 
     public SystemEnvironmentConfigurator CreateSystemEnvironment(GlobalLayout layout) => new(layout, StatPath);
 
+    /// <summary>Ferramentas do sistema (apt-get, apt-cache, dnf, apk), substituídas nos testes.</summary>
+    public ISystemCommandRunner CommandRunner { get; init; } = new SystemCommandRunner();
+
+    public IArtifactInstaller CreateAptInstaller(GlobalLayout layout, AptCandidate candidate, IDiagnosticSink diagnostics) =>
+        new AptInstaller(CommandRunner, candidate, new InstallationManifestStore(layout.ManifestFile), diagnostics);
+
     /// <summary>Indica se o RID alvo é Windows (registro, zip e <c>dotnet.exe</c>).</summary>
     public bool IsWindowsTarget => DetectRid().StartsWith("win-", StringComparison.Ordinal);
 

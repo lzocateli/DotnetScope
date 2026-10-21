@@ -9,6 +9,7 @@ using DotnetScope.Core.Resolution;
 using DotnetScope.Core.Versions;
 using DotnetScope.Infrastructure.Installation;
 using DotnetScope.Infrastructure.Metadata;
+using DotnetScope.Infrastructure.SystemScope;
 
 namespace DotnetScope.Cli.Commands;
 
@@ -119,7 +120,16 @@ internal static class ListCommand
     {
         var home = services.HomeDirectory();
         var userRoot = InstallLocations.ValidateUserRoot(installDir ?? InstallLocations.DefaultUserRoot(home), home);
-        var records = services.CreateManifestStore().Read().Concat(ReadGlobalRecords(services)).ToList();
+        var records = new List<InstallationRecord>(services.CreateManifestStore().Read());
+        foreach (var record in ReadGlobalRecords(services))
+        {
+            // O apt pode ter atualizado o pacote desde a instalação: vale a versão instalada hoje.
+            var current = AptPackages.PackageOf(record) is { } package
+                ? await AptPackages.InstalledVersionAsync(services.CommandRunner, package, CancellationToken.None).ConfigureAwait(false)
+                : null;
+            records.Add(current is null ? record : record with { Version = AptPackages.UpstreamVersion(current) });
+        }
+
         var roots = new[] { userRoot }.Concat(records.Select(r => r.Root)).Concat(services.SystemRoots()).Where(Directory.Exists);
         var items = InstalledInventory.Scan(roots, records, home, services.IsPackageManaged);
 

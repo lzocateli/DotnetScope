@@ -58,7 +58,8 @@ internal static class DoctorCommand
                     }
                 }
 
-                roots.AddRange(manifest.Read().Select(r => r.Root));
+                // Raízes de pacotes apt pertencem ao gerenciador de pacotes: o doctor não cria lock nem repara nada nelas.
+                roots.AddRange(manifest.Read().Where(r => AptPackages.PackageOf(r) is null).Select(r => r.Root));
                 if (global && parseResult.GetValue(repair))
                 {
                     // Raízes vindas do manifesto também precisam ser confiáveis antes de qualquer reparo como root.

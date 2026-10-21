@@ -113,6 +113,8 @@ dotnetscope install --from-global-json [caminho] [opções]
 | Opção | Padrão | Descrição |
 | --- | --- | --- |
 | `--scope` | `user` | `user` ou `global` (somente Linux nesta versão; exige root, ver [Escopo global](#escopo-global-linux)). |
+| `--source` | `auto` | Estratégia do escopo global: `auto`, `archive` ou `apt` (ver [Estratégia apt](#estratégia-apt)). Com `--scope user`, `apt` é erro de uso. |
+| `--install-deps` | `false` | Escopo global: instala as dependências nativas pelo gerenciador de pacotes antes de resolver a versão. Com `--scope user`, é erro de uso. |
 | `--install-dir` | `~/.dotnet` (Windows: `%LOCALAPPDATA%\Microsoft\dotnet`) | Raiz da instalação; precisa ser absoluta. |
 | `--prerelease` | `false` | Permite versões preview/RC. |
 | `--offline` | `false` | Resolve a versão somente com o metadata em cache (o download continua exigindo rede). |
@@ -350,8 +352,8 @@ Valores de `status`:
 - `planned` (`--dry-run`);
 - `skipped` (`--env-conflict skip`);
 - `removed` (`env remove`);
-- no `install`, também `disabled` (`--configure-env false`) e `notApplied`
-  (validação do host falhou).
+- no `install`, também `disabled` (`--configure-env false`), `notApplied`
+  (validação do host falhou) e `package` (estratégia apt: o ambiente é do pacote).
 
 O objeto `environment` da saída JSON do `install` tem o mesmo formato.
 
@@ -507,8 +509,9 @@ O código de saída é `0` quando não restam erros (ou todos foram corrigidos) 
 ## Escopo global (Linux)
 
 `--scope global` instala para todos os usuários da máquina. Os requisitos vêm do
-[modelo de ameaças da F7](modelo-de-ameacas-f7.md); nesta versão a estratégia é
-somente `archive` (o `apt` e o Windows e macOS chegam nas próximas etapas da F7).
+[modelo de ameaças da F7](modelo-de-ameacas-f7.md). As estratégias são `archive`
+(instalação por arquivo, descrita nesta seção) e [`apt`](#estratégia-apt); Windows
+e macOS chegam nas próximas etapas da F7.
 
 ```bash
 sudo dotnetscope install sdk lts --scope global --yes
@@ -556,6 +559,51 @@ Garantias:
 - `--prerelease`, `--archive`, `--from-global-json`, `--dry-run` e `--offline`
   funcionam como no escopo user. O diretório de ferramentas (`~/.dotnet/tools`)
   não entra no `PATH` global.
+
+### Estratégia apt
+
+| `--source` | Comportamento |
+| --- | --- |
+| `auto` (padrão) | Usa o `apt` somente se o candidato das fontes configuradas for **exatamente** a versão que o metadata resolveria; caso contrário, `archive`. Com `--install-dir`, ou com o ambiente global apontando para uma instalação por arquivo, usa sempre `archive`. O resultado nunca difere do da estratégia `archive`. |
+| `apt` | Usa o candidato do pacote do canal (`dotnet-sdk-<canal>`, `dotnet-runtime-<canal>`, `aspnetcore-runtime-<canal>`), respeitando versão exata ou feature band quando pedidas. Sem candidato compatível, código `3`; com `--install-dir` ou `--archive`, código `2`. |
+| `archive` | Sempre instala por arquivo em `/usr/local/share/dotnet` (ou `--install-dir`). |
+
+```bash
+sudo dotnetscope install runtime 10.0 --scope global --yes          # auto: apt se tiver 10.0.<último patch>
+sudo dotnetscope install sdk 10.0 --scope global --source apt --yes # SDK do pacote da distribuição (por exemplo, 10.0.1xx)
+sudo dotnetscope install sdk lts --scope global --install-deps --yes
+```
+
+- Usa somente as fontes apt já configuradas: o dotnetscope não executa
+  `apt-get update` e não adiciona repositório nem chave. Se o pacote não
+  aparecer, execute `apt-get update` antes.
+- `apt-get`, `apt-cache`, `dnf` e `apk` são executados pelo caminho absoluto, sem
+  shell, com ambiente fixo (somente as variáveis de proxy são repassadas; os
+  gerenciadores verificam as assinaturas dos pacotes) e prazo. `APT_CONFIG`,
+  `LD_PRELOAD` e o `PATH` de quem elevou não têm efeito. Nomes e versões de
+  pacote são validados por expressão regular antes de qualquer uso.
+- A raiz é a do pacote: `/usr/lib/dotnet` (Ubuntu) ou `/usr/share/dotnet`
+  (packages.microsoft.com), lida do destino real de `/usr/bin/dotnet`. O
+  dotnetscope não grava ambiente (`environment.status` = `package`).
+- Um pacote já instalado na mesma versão é informado como `alreadyInstalled` e
+  não é registrado: ele pertence a quem o instalou. Em outra versão, código `6`
+  sem alterar nada.
+- O manifesto global registra a instalação com `artifact.url` = `apt:<pacote>`.
+  `uninstall --scope global` (sem `--install-dir`) casa o pedido com a versão
+  instalada hoje, inclusive depois de um `apt upgrade`, e executa `apt-get
+  remove` somente desse pacote. A remoção é simulada antes: se o apt também
+  removeria pacotes que dependem dele (por exemplo, o SDK ao remover o runtime),
+  nada é removido e a CLI retorna código `6`. Dependências instaladas pelo apt
+  permanecem. O `doctor` não cria lock nem repara nada em raízes de pacote.
+- Não mistura estratégias: `--source apt` com o ambiente global apontando para
+  uma instalação por arquivo, ou `archive` com `/usr/bin/dotnet` de pacote,
+  retorna código `6`.
+- `--install-deps` instala uma tabela fixa por gerenciador: `apt` (`ca-certificates`,
+  `libc6`, `libgcc-s1`, `libstdc++6`, `zlib1g`, a primeira `libicu<N>` e a
+  primeira `libssl3t64`/`libssl3`/`libssl1.1` disponíveis), `dnf` (`ca-certificates`,
+  `glibc`, `libgcc`, `libstdc++`, `zlib`, `libicu`, `openssl-libs`) ou `apk`
+  (`ca-certificates`, `libgcc`, `libstdc++`, `zlib`, `icu-libs`, `libssl3`). Não
+  roda em `--dry-run`.
 
 ## Manifesto de instalações
 

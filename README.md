@@ -70,6 +70,7 @@ usuários, com `/etc/profile.d/dotnetscope.sh` e `/etc/dotnet/install_location_<
 ```bash
 sudo dotnetscope install sdk lts --scope global --yes
 sudo dotnetscope uninstall sdk 10.0.402 --scope global   # restaura /etc
+sudo dotnetscope install sdk 10.0 --scope global --source apt --install-deps --yes   # pacote da distribuição
 ```
 
 No Windows, a raiz padrão é `%LOCALAPPDATA%\Microsoft\dotnet` e o ambiente vai
@@ -84,7 +85,6 @@ dotnetscope env remove                            # restaura os valores anterior
 ## Uso planejado
 
 ```bash
-dotnetscope install runtime 10.0 --scope global --source apt   # apt (F7b)
 dotnetscope install sdk lts --scope global             # Windows e macOS, terminal elevado (F7c e F7d)
 dotnetscope install sdk lts                            # macOS, escopo user (F8)
 ```
