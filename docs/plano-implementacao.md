@@ -186,8 +186,9 @@ Regras comuns:
 - Download em diretório temporário privado (0700) no mesmo filesystem do destino.
 - SHA-512 calculado em streaming e comparado antes de qualquer extração ou execução.
 - Instalação offline: `--archive <arquivo> --sha512 <hash>`.
-- Hardening (F9): verificação Authenticode do instalador Windows e da assinatura
-  do `.pkg` no macOS.
+- Verificação da assinatura Authenticode do instalador Windows e da assinatura
+  do `.pkg` no macOS antes de executá-los: antecipada para a F7 (D-F7-1 do
+  [modelo de ameaças](modelo-de-ameacas-f7.md#7-decisões)).
 
 ## 8. Extração e transação
 
@@ -309,6 +310,9 @@ runners efêmeros.
 - Estado, manifesto, lock e backups com permissões restritas.
 - Logs sem variáveis completas, conteúdo de perfis, tokens ou URLs com credenciais.
 - Threat model antes da F7 (escopo global) e revisão de segurança antes da 1.0.
+  O da F7 está em [modelo-de-ameacas-f7.md](modelo-de-ameacas-f7.md), aprovado
+  pelo revisor humano em 2026-10-21 (decisões D-F7-1 a D-F7-5, sem custo
+  financeiro nem complexidade de processo adicionais).
 
 ## 15. Fases
 
@@ -322,7 +326,7 @@ runners efêmeros.
 | F4 | `uninstall`, `list --installed`, `doctor [--repair]`, `install --archive <arquivo> --sha512 <hash>` (seção 7), `install --from-global-json [caminho]` (seção 3, com `rollForward`) | reversão completa e origem correta na listagem; instalação offline verificada; versão resolvida conforme `global.json` | concluída (E2E com remoção completa em Ubuntu 24.04 e Fedora 41) |
 | F5 | Publicação AOT multi-RID, `install.sh`/`install.ps1`, release no GitHub | binários rodam sem .NET; checksums publicados | concluída (smoke em Ubuntu 18.04, Rocky 8, Debian 12, Alpine 3.17/3.24 e runners Windows/macOS; [processo de release](release.md)) |
 | F6 | Windows user (zip + registro + `WM_SETTINGCHANGE`) | `dotnet` disponível em novo terminal; reversão do registro | concluída (testes nativos e E2E em `windows-2025`; [referência](cli.md#windows)) |
-| F7 | Global: `apt`, instalador Windows, `.pkg`, instalação por arquivo (D4), `--install-deps` | instalação elevada validada; mistura com pacote recusada | pendente |
+| F7 | Global: `apt`, instalador Windows, `.pkg`, instalação por arquivo (D4), `--install-deps` | instalação elevada validada; mistura com pacote recusada; requisitos R01–R20 do [modelo de ameaças](modelo-de-ameacas-f7.md) com testes negativos | pendente (modelo de ameaças aprovado em 2026-10-21) |
 | F8 | macOS user | E2E em runner macOS | pendente |
 | F9 | Assinatura, SBOM, Authenticode/`.pkg`, `.deb`/APT, winget, Homebrew | artefatos assinados e verificáveis | pendente |
 
@@ -333,7 +337,11 @@ com milestone, e é entregue por PR com as evidências do template.
 
 - Suporte a distribuições sem ICU (o binário usa `InvariantGlobalization`; o
   SDK instalado ainda exige ICU ou `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT`).
-- Disponibilidade e granularidade de versões nos feeds `apt` do Ubuntu.
+- Disponibilidade e granularidade de versões nos feeds `apt` do Ubuntu; sem o
+  pacote nas fontes configuradas, o escopo global usa `archive` (D-F7-3).
+- A verificação de assinatura dos instaladores oficiais `.exe` e `.pkg` foi
+  antecipada da F9 para a F7 (D-F7-1); a F9 mantém a assinatura dos artefatos do
+  próprio DotnetScope e a do `.pkg` próprio.
 - Comportamento de `install_location` e de `InstalledVersions` com instalações
   globais mistas.
 - Shells não suportados na v1 (nushell, tcsh) apenas recebem instruções.
