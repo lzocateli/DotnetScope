@@ -5,7 +5,7 @@ runtimes .NET nos escopos `user` e `global`, com verificação de integridade,
 extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuário.
 
 > **Estado:** em desenvolvimento (fase F7). Release atual:
-> [v0.1.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.1.0).
+> [v0.2.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.2.0).
 > Implementado em Linux e Windows (escopo user) e no Linux (escopo global):
 > `list --available|--installed`,
 > `install` (inclusive `--archive` e `--from-global-json`), `uninstall`, `env` e

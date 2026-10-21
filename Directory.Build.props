@@ -15,7 +15,7 @@
 
   <PropertyGroup Label="Versioning">
     <!-- Fonte única da versão: releases só sobrescrevem VersionSuffix. -->
-    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionPrefix>0.2.0</VersionPrefix>
     <AssemblyVersion>$([System.Version]::Parse($(VersionPrefix)).Major).0.0.0</AssemblyVersion>
     <FileVersion>$(VersionPrefix).0</FileVersion>
     <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
