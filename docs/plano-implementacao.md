@@ -330,7 +330,7 @@ runners efêmeros.
 | F7b | Global Linux por `apt` (`--source auto\|archive\|apt`) e `--install-deps` | R10–R12, R19 | concluída (E2E apt em Ubuntu 24.04) |
 | F7c | Global Windows: instalador `.exe` com Authenticode (sem `archive`, decisão de 2026-10-21) | R01–R04, R16, R17, R18 | concluída (testes nativos e E2E global em `windows-2025`) |
 | F7d | Global macOS: `.pkg` com assinatura (sem `archive`, decisão de 2026-10-21) | R01–R03, R16, R17 | concluída (E2E global em `macos-15`, com raiz confiável e não confiável) |
-| F8 | macOS user | E2E em runner macOS | pendente |
+| F8 | macOS user | E2E em runner macOS | concluída (testes nativos e E2E user em `macos-15`: zsh, bash sem perfil próprio e bash com `~/.bash_profile`) |
 | F9 | Assinatura, SBOM, Authenticode/`.pkg`, `.deb`/APT, winget, Homebrew | artefatos assinados e verificáveis | pendente |
 
 Cada fase vira uma Issue (template `Tarefa técnica` ou `Propor funcionalidade`)
