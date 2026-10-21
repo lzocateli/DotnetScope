@@ -629,7 +629,7 @@ dotnetscope uninstall runtime 9.0.4 --scope global
   escrita para outras identidades é recusado (código `7`).
 - Com o arquivo aberto sem compartilhar escrita nem exclusão, a CLI confere de
   novo o SHA-512 do metadata e a assinatura Authenticode (`WinVerifyTrust`, com
-  assinante Microsoft Corporation) e só então executa `/install /quiet
+  assinante e emissor da Microsoft Corporation) e só então executa `/install /quiet
   /norestart`, com `TEMP` no staging. Assinatura inválida ou de terceiro
   retorna código `5` sem executar nada.
 - Códigos do instalador: `3010`/`1641` são sucesso com aviso de reinicialização;
@@ -637,7 +637,8 @@ dotnetscope uninstall runtime 9.0.4 --scope global
 - Ctrl+C durante a execução do instalador não o interrompe: a CLI avisa, espera
   o resultado real e registra a instalação, para não deixar a máquina fora do
   controle do dotnetscope. Após 30 minutos, o instalador é encerrado (código `1`).
-- O assinante precisa ter `O` e `CN` exatamente iguais a `Microsoft Corporation`.
+- O certificado do assinante e o do emissor precisam ter um único `O`
+  exatamente igual a `Microsoft Corporation` (o `CN` varia, por exemplo `.NET`).
 - Componente já presente em `%ProgramFiles%\dotnet` é `alreadyInstalled` e não é
   registrado. O manifesto global fica em `%ProgramData%\dotnetscope`;
   `environment.status` é `package`.

@@ -39,15 +39,21 @@ public sealed class WindowsGlobalTests : IDisposable
         Assert.Equal(succeeded, error is null);
     }
 
+    private const string MicrosoftIssuer = "CN=Microsoft Code Signing PCA 2011, O=Microsoft Corporation, L=Redmond, S=Washington, C=US";
+
     [Theory]
-    [InlineData("CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US", true)]
-    [InlineData("CN=Microsoft Corporation, O=Microsoft Corporation Fans Ltd, C=US", false)]
-    [InlineData("CN=\"X, O=Microsoft Corporation\", O=Contoso, C=US", false)]
-    [InlineData("CN=Contoso, O=Microsoft Corporation, C=US", false)]
-    [InlineData("CN=Microsoft Corporation, O=Microsoft Corporation, O=Contoso", false)]
-    [InlineData("CN=Microsoft Corporation, C=US", false)]
-    public void SignerPolicy_ExigeOECnExatos(string subject, bool expected) =>
-        Assert.Equal(expected, SignerPolicy.IsMicrosoft(new System.Security.Cryptography.X509Certificates.X500DistinguishedName(subject)));
+    [InlineData("CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US", MicrosoftIssuer, true)]
+    [InlineData("CN=.NET, O=Microsoft Corporation, L=Redmond, S=Washington, C=US", MicrosoftIssuer, true)]
+    [InlineData("CN=Microsoft Corporation, O=Microsoft Corporation Fans Ltd, C=US", MicrosoftIssuer, false)]
+    [InlineData("CN=\"X, O=Microsoft Corporation\", O=Contoso, C=US", MicrosoftIssuer, false)]
+    [InlineData("CN=Microsoft Corporation, O=Microsoft Corporation, O=Contoso", MicrosoftIssuer, false)]
+    [InlineData("CN=Microsoft Corporation, C=US", MicrosoftIssuer, false)]
+    [InlineData("CN=Contoso, O=Contoso, C=US", "CN=Microsoft ID Verified CS EOC CA 01, O=Microsoft Corporation, C=US", false)]
+    [InlineData("CN=Microsoft Corporation, O=Microsoft Corporation, C=US", "CN=Some Commercial CA, O=Some CA Inc, C=US", false)]
+    public void SignerPolicy_ExigeOrganizacaoMicrosoftNoAssinanteENoEmissor(string subject, string issuer, bool expected) =>
+        Assert.Equal(expected, SignerPolicy.IsMicrosoft(
+            new System.Security.Cryptography.X509Certificates.X500DistinguishedName(subject),
+            new System.Security.Cryptography.X509Certificates.X500DistinguishedName(issuer)));
 
     [Fact]
     public async Task Install_SourceInstallerNoEscopoUser_EhErroDeUso()

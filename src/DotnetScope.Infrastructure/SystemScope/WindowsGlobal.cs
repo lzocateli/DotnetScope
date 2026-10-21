@@ -109,7 +109,7 @@ public static partial class Authenticode
 #pragma warning disable SYSLIB0057 // Lê o certificado do assinante já validado por WinVerifyTrust acima.
         using var signer = new X509Certificate2(X509Certificate.CreateFromSignedFile(path));
 #pragma warning restore SYSLIB0057
-        if (!SignerPolicy.IsMicrosoft(signer.SubjectName))
+        if (!SignerPolicy.IsMicrosoft(signer.SubjectName, signer.IssuerName))
         {
             throw new DotnetScopeException(ExitCodes.Integrity, $"{Path.GetFileName(path)} não é assinado pela Microsoft ({signer.Subject}); nada foi executado.");
         }
@@ -173,37 +173,40 @@ public static partial class Authenticode
     }
 }
 
-/// <summary>Assinante aceito para os instaladores oficiais: O e CN exatamente "Microsoft Corporation", um único O.</summary>
+/// <summary>
+/// Assinante aceito para os instaladores oficiais: um único O exatamente "Microsoft Corporation" no certificado do
+/// assinante e no do emissor. O CN varia (por exemplo, ".NET"); o emissor da Microsoft impede certificados de terceiros
+/// com O semelhante, e os emitidos pela Microsoft a clientes (Trusted Signing) trazem o O do cliente no assinante.
+/// </summary>
 public static class SignerPolicy
 {
     private const string OrganizationOid = "2.5.4.10";
-    private const string CommonNameOid = "2.5.4.3";
     private const string Microsoft = "Microsoft Corporation";
 
-    public static bool IsMicrosoft(X500DistinguishedName subject)
+    public static bool IsMicrosoft(X500DistinguishedName subject, X500DistinguishedName issuer)
     {
         ArgumentNullException.ThrowIfNull(subject);
+        ArgumentNullException.ThrowIfNull(issuer);
+        return HasOnlyMicrosoftOrganization(subject) && HasOnlyMicrosoftOrganization(issuer);
+    }
+
+    private static bool HasOnlyMicrosoftOrganization(X500DistinguishedName name)
+    {
         var organizations = new List<string?>();
-        var commonNames = new List<string?>();
-        foreach (var rdn in subject.EnumerateRelativeDistinguishedNames())
+        foreach (var rdn in name.EnumerateRelativeDistinguishedNames())
         {
             if (rdn.HasMultipleElements)
             {
                 return false;
             }
 
-            switch (rdn.GetSingleElementType().Value)
+            if (rdn.GetSingleElementType().Value == OrganizationOid)
             {
-                case OrganizationOid:
-                    organizations.Add(rdn.GetSingleElementValue());
-                    break;
-                case CommonNameOid:
-                    commonNames.Add(rdn.GetSingleElementValue());
-                    break;
+                organizations.Add(rdn.GetSingleElementValue());
             }
         }
 
-        return organizations is [Microsoft] && commonNames is [Microsoft];
+        return organizations is [Microsoft];
     }
 }
 

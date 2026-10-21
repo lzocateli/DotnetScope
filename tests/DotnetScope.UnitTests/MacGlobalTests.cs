@@ -103,6 +103,7 @@ public sealed class MacGlobalTests : IDisposable
     [Fact]
     public async Task Install_Global_RaizComAncestralDeOutroUsuario_SomenteAvisa()
     {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Regras de caminho Unix.");
         var result = await RunAsync(
             ["install", "runtime", "10.0", "--scope", "global", "--yes"],
             stat: path => new UnixFileStatus(path.EndsWith("/share", StringComparison.Ordinal) ? 501 : 0, Convert.ToInt32("755", 8)));
