@@ -1,7 +1,7 @@
-name: Metadata Smoke
+name: Scheduled Smoke
 
-# Valida o binário AOT contra o metadata oficial real, detectando mudanças de esquema
-# que as fixtures sintéticas dos testes não capturam.
+# Valida o binário AOT contra o metadata e os artefatos oficiais reais, detectando mudanças
+# de esquema ou de layout que as fixtures sintéticas dos testes não capturam.
 on:
   schedule:
     - cron: "0 9 * * 1"
@@ -10,7 +10,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: metadata-smoke
+  group: scheduled-smoke
   cancel-in-progress: true
 
 jobs:
@@ -46,3 +46,23 @@ jobs:
               jq -e '.resolved.sha512 | test("^[0-9a-f]{128}$")'
           done
           "$bin" list --available lts --offline > /dev/null
+
+  install-e2e:
+    name: Install E2E (user scope, clean containers)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build Native AOT binary
+        shell: pwsh
+        run: ./tools/scripts/Invoke-Validation.ps1 -Aot -Engine docker
+
+      - name: Install SDK and runtime in clean containers
+        shell: pwsh
+        run: ./tools/scripts/Invoke-E2E.ps1 -Engine docker

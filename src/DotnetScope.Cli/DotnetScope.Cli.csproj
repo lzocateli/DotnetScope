@@ -16,6 +16,7 @@
     <ProjectReference Include="../DotnetScope.Core/DotnetScope.Core.csproj" />
     <ProjectReference Include="../DotnetScope.Infrastructure/DotnetScope.Infrastructure.csproj" />
     <InternalsVisibleTo Include="DotnetScope.UnitTests" />
+    <InternalsVisibleTo Include="DotnetScope.IntegrationTests" />
   </ItemGroup>
 
 </Project>

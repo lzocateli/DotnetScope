@@ -4,8 +4,9 @@ CLI Native AOT (`dotnetscope`) para instalar, listar, validar e remover SDKs e
 runtimes .NET nos escopos `user` e `global`, com verificação de integridade,
 extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuário.
 
-> **Estado:** em desenvolvimento (fase F2). Ainda não há release publicada.
-> Implementado: `list --available` ([referência da CLI](docs/cli.md)). O restante
+> **Estado:** em desenvolvimento (fase F3). Ainda não há release publicada.
+> Implementado: `list --available` e `install` no escopo user em Linux/macOS
+> ([referência da CLI](docs/cli.md)). O restante
 > descrito abaixo é planejado; consulte o
 > [plano de implementação](docs/plano-implementacao.md) para fases e decisões.
 
@@ -16,6 +17,9 @@ dotnetscope list --available                      # canais, fase de suporte e fi
 dotnetscope list --available 10.0.4xx             # versões da feature band e a que seria resolvida
 dotnetscope list --available lts -c runtime       # runtime do canal LTS mais recente
 dotnetscope list --available SDK-10.0 --output json
+dotnetscope install sdk 10.0.402                  # escopo user em ~/.dotnet, SHA-512 verificado
+dotnetscope install runtime lts --yes             # confirma a versão resolvida sem perguntar
+dotnetscope install SDK-10.0.4xx --dry-run        # mostra o plano sem baixar
 ```
 
 ## Uso planejado
@@ -43,6 +47,13 @@ Blocos e instalações de terceiros nunca são sobrescritos.
 
   ```bash
   pwsh ./tools/scripts/Invoke-Validation.ps1 -Aot
+  ```
+
+- E2E real em containers limpos (Ubuntu 24.04 e Fedora 41), após o comando
+  acima; baixa os artefatos oficiais:
+
+  ```bash
+  pwsh ./tools/scripts/Invoke-E2E.ps1
   ```
 
 - Instale o hook obrigatório de detecção de secrets (requer PowerShell 7 e

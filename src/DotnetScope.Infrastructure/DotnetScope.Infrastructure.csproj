@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <RootNamespace>DotnetScope.Infrastructure</RootNamespace>
+    <!-- Exigido pelo gerador de LibraryImport (P/Invoke compatível com Native AOT). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

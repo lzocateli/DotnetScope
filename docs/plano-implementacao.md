@@ -196,8 +196,14 @@ Regras comuns:
   entradas de dispositivo e nomes duplicados; preservar bits de execução.
 - Staging em `<raiz>/.dotnetscope-staging-<id>` e `rename` atômico por diretório
   de componente.
-- Lock de instalação por raiz; journal `state.json`; `doctor --repair` remove
-  staging órfão e recupera instalações parciais.
+- Lock de instalação por raiz (`.dotnetscope.lock`); journal `journal.json` no
+  staging; `doctor --repair` (F4) remove staging órfão e recupera instalações
+  parciais a partir do journal.
+- Unidade de instalação ("folha"): `sdk/<v>`, `templates/<v>`, `shared/<fw>/<v>`,
+  `host/fxr/<v>`, `packs/<pack>/<v>`, `sdk-manifests/<faixa>/<id>/<v>` e itens de
+  primeiro nível (`dotnet`, `dnx`, `LICENSE.txt`). O manifesto registra as folhas do
+  arquivo (`paths`) e as criadas pela instalação (`addedPaths`); a remoção (F4) só
+  apaga folhas que nenhuma outra instalação registrada contém.
 - Manifesto em `~/.local/share/dotnetscope/manifest.json` (Windows:
   `%LOCALAPPDATA%\dotnetscope\manifest.json`) com componente, versão, origem,
   caminhos e hash. `uninstall` remove apenas o que o DotnetScope instalou;
@@ -307,7 +313,7 @@ runners efêmeros.
 | F0a | `.github`, `.githooks`, Gitleaks, plano, README, LICENSE | instruções e hook validados | concluída |
 | F0b | `global.json`, `Directory.*.props`, `DotnetScope.slnx`, projetos base, `ExitCodes`, `tools/scripts/Invoke-Validation.ps1`, workflow `pr-validation` | build, testes e AOT `linux-x64` verdes em container e no CI | concluída |
 | F1 | Parsing, cliente de metadata, cache, `list --available` | resolução correta com fixtures, incluindo `lts`/`sts`/feature band | concluída ([referência](cli.md)) |
-| F2 | `install` user Linux por arquivo, verificação, extração segura, manifesto, lock | SDK funcional em container limpo; casos maliciosos rejeitados | pendente |
+| F2 | `install` user Linux por arquivo, verificação, extração segura, manifesto, lock | SDK funcional em container limpo; casos maliciosos rejeitados | concluída (E2E Ubuntu 24.04 e Fedora 41) |
 | F3 | `--configure-env` (Linux/macOS), `env show\|apply\|remove`, detecção de conflito | casos obrigatórios da seção 12 verdes | pendente |
 | F4 | `uninstall`, `list --installed`, `doctor [--repair]` | reversão completa e origem correta na listagem | pendente |
 | F5 | Publicação AOT multi-RID, `install.sh`/`install.ps1`, release no GitHub | binários rodam sem .NET; checksums publicados | pendente |
@@ -327,6 +333,12 @@ com milestone, e é entregue por PR com as evidências do template.
   globais mistas.
 - Shells não suportados na v1 (nushell, tcsh) apenas recebem instruções.
 - Custo de manter repositório APT assinado e manifests winget/Homebrew.
+- O binário AOT atual é publicado em Ubuntu 24.04 (glibc 2.39) e não executa em
+  distribuições com glibc anterior (Ubuntu 22.04, Debian 12). A matriz E2E da F2
+  cobre Ubuntu 24.04 e Fedora 41; as demais distribuições da seção 12 dependem da
+  base de build antiga e do RID `linux-musl-x64` (F5).
+- Pendências não atribuídas a fases e propostas para a F4: `install --archive
+  <arquivo> --sha512 <hash>` (seção 7) e `install --from-global-json` (seção 3).
 - O metadata oficial publica assinatura PKCS#7 destacada (campo `signature`,
   arquivo `.p7s`). Hoje a confiança no metadata vem do TLS e da allowlist;
   avaliar a verificação dessa assinatura (compatível com AOT) na F9.

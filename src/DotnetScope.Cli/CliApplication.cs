@@ -21,6 +21,7 @@ internal static class CliApplication
         var root = new RootCommand(Description) { VerboseOption };
         root.SetAction(parseResult => new HelpAction().Invoke(parseResult));
         root.Subcommands.Add(ListCommand.Build(services));
+        root.Subcommands.Add(InstallCommand.Build(services));
         return root;
     }
 
@@ -41,7 +42,13 @@ internal static class CliApplication
             return ExitCodes.Usage;
         }
 
-        var configuration = new InvocationConfiguration { Output = services.Output, Error = services.Error };
+        // Após Ctrl+C/SIGTERM, aguarda a ação concluir rollback e limpeza antes de encerrar o processo.
+        var configuration = new InvocationConfiguration
+        {
+            Output = services.Output,
+            Error = services.Error,
+            ProcessTerminationTimeout = TimeSpan.FromSeconds(60),
+        };
         return await parseResult.InvokeAsync(configuration, cancellationToken).ConfigureAwait(false);
     }
 

@@ -29,6 +29,19 @@ internal sealed class LocalMetadataServer : IDisposable
 
     public ConcurrentQueue<string> Requests { get; } = new();
 
+    /// <summary>Arquivos binários publicados por caminho, com suporte a <c>Range: bytes=N-</c>.</summary>
+    public ConcurrentDictionary<string, byte[]> Files { get; } = new();
+
+    /// <summary>Quando definido, a próxima resposta de arquivo envia só esta quantidade de bytes e aborta a conexão.</summary>
+    public int? InterruptAfterBytes { get; set; }
+
+    /// <summary>Ignora o cabeçalho Range e responde sempre o arquivo completo.</summary>
+    public bool IgnoreRange { get; set; }
+
+    public ConcurrentQueue<string?> RangeHeaders { get; } = new();
+
+    public Uri FileUrl(string path) => new(BaseUrl, path.TrimStart('/'));
+
     /// <summary>Respostas alternativas por caminho (por exemplo, "/releases-index.json").</summary>
     public ConcurrentDictionary<string, Func<HttpListenerResponse, Task>> Overrides { get; } = new();
 
@@ -47,6 +60,47 @@ internal sealed class LocalMetadataServer : IDisposable
         }
         catch (ObjectDisposedException)
         {
+        }
+    }
+
+    private async Task ServeFileAsync(HttpListenerRequest request, HttpListenerResponse response, byte[] content)
+    {
+        var range = request.Headers["Range"];
+        RangeHeaders.Enqueue(range);
+        var start = 0;
+        if (!IgnoreRange && range is not null && range.StartsWith("bytes=", StringComparison.Ordinal) && range.EndsWith('-'))
+        {
+            start = int.Parse(range[6..^1], System.Globalization.CultureInfo.InvariantCulture);
+            if (start >= content.Length)
+            {
+                response.StatusCode = 416;
+                response.Close();
+                return;
+            }
+
+            response.StatusCode = 206;
+            response.Headers["Content-Range"] = $"bytes {start}-{content.Length - 1}/{content.Length}";
+        }
+
+        response.ContentLength64 = content.Length - start;
+        var interrupt = InterruptAfterBytes;
+        InterruptAfterBytes = null;
+        try
+        {
+            if (interrupt is not null)
+            {
+                await response.OutputStream.WriteAsync(content.AsMemory(start, Math.Min(interrupt.Value, content.Length - start)));
+                await response.OutputStream.FlushAsync();
+                response.Abort();
+                return;
+            }
+
+            await response.OutputStream.WriteAsync(content.AsMemory(start));
+            response.Close();
+        }
+        catch (HttpListenerException)
+        {
+            response.Abort();
         }
     }
 
@@ -73,7 +127,14 @@ internal sealed class LocalMetadataServer : IDisposable
 
             var path = context.Request.Url!.AbsolutePath;
             Requests.Enqueue(path);
-            using var response = context.Response;
+            var response = context.Response;
+            if (Files.TryGetValue(path, out var content))
+            {
+                await ServeFileAsync(context.Request, response, content);
+                continue;
+            }
+
+            using var disposable = response;
             if (Overrides.TryGetValue(path, out var handler))
             {
                 await handler(response);

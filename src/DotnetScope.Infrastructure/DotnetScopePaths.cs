@@ -36,5 +36,36 @@ public static class DotnetScopePaths
             : throw new DotnetScopeException(ExitCodes.UnexpectedError, "Não foi possível determinar o diretório home do usuário.");
     }
 
+    /// <summary>
+    /// Dados persistentes (manifesto): <c>%LOCALAPPDATA%\dotnetscope</c> no Windows; <c>$XDG_DATA_HOME/dotnetscope</c>
+    /// (se absoluto) ou <c>~/.local/share/dotnetscope</c> no Linux e macOS.
+    /// </summary>
+    public static string GetDataDirectory() =>
+        GetDataDirectory(
+            Environment.GetEnvironmentVariable,
+            OperatingSystem.IsWindows(),
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    internal static string GetDataDirectory(Func<string, string?> environment, bool isWindows, string home)
+    {
+        if (isWindows)
+        {
+            var localAppData = environment("LOCALAPPDATA");
+            return IsAbsolute(localAppData)
+                ? Path.Combine(localAppData!, "dotnetscope")
+                : throw new DotnetScopeException(ExitCodes.UnexpectedError, "LOCALAPPDATA não está definido como caminho absoluto.");
+        }
+
+        var xdgData = environment("XDG_DATA_HOME");
+        if (IsAbsolute(xdgData))
+        {
+            return Path.Combine(xdgData!, "dotnetscope");
+        }
+
+        return IsAbsolute(home)
+            ? Path.Combine(home, ".local", "share", "dotnetscope")
+            : throw new DotnetScopeException(ExitCodes.UnexpectedError, "Não foi possível determinar o diretório home do usuário.");
+    }
+
     private static bool IsAbsolute(string? path) => !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path);
 }

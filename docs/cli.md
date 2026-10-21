@@ -96,6 +96,115 @@ Versões (`list --available 10.0.4xx --output json`):
 nesse caso o código de saída é `3`. Valores ausentes no metadata são `null`. As
 chaves são contrato estável: remoções ou renomeações são mudanças incompatíveis.
 
+## `install`
+
+Instala um SDK ou runtime a partir do arquivo compactado oficial, verificado por
+SHA-512. Nesta versão funciona no escopo `user` no Linux e no macOS (`.tar.gz`);
+o escopo `global` e o Windows retornam erro.
+
+```text
+dotnetscope install <componente> <versão> [opções]
+dotnetscope install <COMPONENTE-versão> [opções]
+```
+
+| Opção | Padrão | Descrição |
+| --- | --- | --- |
+| `--scope` | `user` | `user`; `global` ainda não está disponível (código `2`). |
+| `--install-dir` | `~/.dotnet` | Raiz da instalação; precisa ser absoluta. |
+| `--prerelease` | `false` | Permite versões preview/RC. |
+| `--offline` | `false` | Resolve a versão somente com o metadata em cache (o download continua exigindo rede). |
+| `--dry-run` | `false` | Mostra o plano sem criar diretórios nem baixar. |
+| `-y`, `--yes` | `false` | Confirma quando a versão resolvida difere da informada (canal, feature band, `lts`, `sts`). |
+| `--allow-root` | `false` | Permite o escopo user executando como root. |
+| `--output` | `text` | `text` ou `json`. |
+
+Componentes e especificações de versão seguem as mesmas regras de
+[`list --available`](#especificação-de-versão).
+
+### Comportamento
+
+1. Recusa execução como root (código `7`) sem `--allow-root`; com ele, a raiz
+   padrão é `/root/.dotnet`.
+2. Valida `--install-dir`, inclusive após resolver links simbólicos. São
+   recusados com código `7`: `/`, o próprio home, diretórios do sistema (`/usr`,
+   `/opt`, `/etc`, `/var` etc.) e o home de outros usuários. Subdiretórios do
+   próprio home são sempre aceitos, mesmo quando o home fica em um desses locais.
+3. Resolve a versão. Se ela não for exata, pede confirmação no terminal ou exige
+   `--yes`: sem terminal interativo, retorna código `2`; se o usuário recusar,
+   código `130`.
+4. Se `sdk/<versão>` ou `shared/<framework>/<versão>` já existe na raiz, de
+   qualquer origem, informa que já está instalado e não baixa nada.
+5. Obtém um lock exclusivo da raiz (`.dotnetscope.lock`). Se outra operação
+   estiver em andamento, retorna código `6` após 30 segundos.
+6. Baixa para um diretório temporário privado dentro da raiz
+   (`.dotnetscope-staging-<id>`, modo `0700`), retomando com `Range` após falhas
+   transitórias, e verifica o SHA-512 antes de extrair (código `5` se divergir).
+7. Extrai aceitando somente diretórios e arquivos regulares com caminhos
+   relativos confinados. Links, dispositivos, caminhos absolutos, `..`, nomes
+   duplicados e arquivos acima dos limites são recusados com código `5`.
+8. Move para a raiz apenas as pastas versionadas e os arquivos ausentes, sem
+   substituir nada existente. O executável `dotnet` só é atualizado quando o
+   `host/fxr` do arquivo é mais novo que todos os da raiz. Falhas desfazem o que
+   foi movido. Ctrl+C cancela o download e a extração e remove o staging; depois
+   que a mesclagem começa (operação de milissegundos), ela é concluída.
+9. Registra a instalação no manifesto e valida o host com `dotnet --list-sdks`
+   ou `--list-runtimes`.
+
+Bibliotecas nativas ausentes (ICU, OpenSSL, libstdc++, libgcc_s, certificados de
+CA) geram avisos antes da instalação. Se a validação falhar, os arquivos
+permanecem instalados e o código é `8` quando há dependências ausentes, ou `1`
+nos demais casos.
+
+Ao final, a CLI mostra como usar o .NET na sessão atual:
+
+```bash
+export DOTNET_ROOT='/home/usuario/.dotnet'
+export PATH='/home/usuario/.dotnet':'/home/usuario/.dotnet/tools':"$PATH"
+```
+
+As ferramentas globais (`dotnet tool install -g`) ficam sempre em
+`~/.dotnet/tools`, mesmo com `--install-dir`.
+
+A configuração persistente do perfil (`--configure-env`, seção 4 do
+[plano](plano-implementacao.md)) ainda não está implementada.
+
+### Saída JSON do `install`
+
+```json
+{
+  "status": "installed",
+  "component": "sdk",
+  "request": "lts",
+  "version": "10.0.402",
+  "rid": "linux-x64",
+  "scope": "user",
+  "installDir": "/home/usuario/.dotnet",
+  "artifact": { "fileName": "dotnet-sdk-linux-x64.tar.gz", "url": "https://builds.dotnet.microsoft.com/...", "sha512": "..." },
+  "addedPaths": ["sdk/10.0.402", "shared/Microsoft.NETCore.App/10.0.13", "..."],
+  "sharedPaths": [],
+  "hostReplaced": false,
+  "validation": { "succeeded": true, "detail": "dotnet --list-sdks lista 10.0.402" },
+  "missingDependencies": [],
+  "environment": { "dotnetRoot": "/home/usuario/.dotnet", "pathEntries": ["/home/usuario/.dotnet", "/home/usuario/.dotnet/tools"] }
+}
+```
+
+`status` é `installed`, `alreadyInstalled` ou `planned` (`--dry-run`).
+`addedPaths` são as pastas criadas por esta instalação; `sharedPaths`, as que o
+arquivo contém, mas já existiam. `validation` é `null` em `--dry-run`.
+
+## Manifesto de instalações
+
+| SO | Arquivo |
+| --- | --- |
+| Linux/macOS | `$XDG_DATA_HOME/dotnetscope/manifest.json` (se absoluto) ou `~/.local/share/dotnetscope/manifest.json` |
+| Windows | `%LOCALAPPDATA%\dotnetscope\manifest.json` |
+
+O manifesto registra componente, versão, RID, escopo, raiz, URL, SHA-512, data,
+pastas do arquivo (`paths`) e pastas criadas (`addedPaths`). É gravado com modo
+`0600`, de forma atômica e sob lock entre processos. Um manifesto corrompido
+nunca é sobrescrito: a instalação é desfeita e a CLI retorna código `1`.
+
 ## Cache do metadata
 
 | SO | Diretório |
@@ -132,11 +241,11 @@ chaves são contrato estável: remoções ou renomeações são mudanças incomp
 | --- | --- |
 | `0` | Sucesso. |
 | `1` | Erro inesperado (detalhes com `--verbose`). |
-| `2` | Uso inválido: opção, versão ou componente inválido, prerelease exata sem `--prerelease`. |
-| `3` | Canal, versão ou artefato inexistente para o RID. |
+| `2` | Uso inválido: opção, versão ou componente inválido, prerelease exata sem `--prerelease`, escopo global, confirmação ausente sem terminal. |
+| `3` | Canal, versão ou artefato inexistente para o RID; plataforma ainda não suportada pelo `install`. |
 | `4` | Falha de rede, metadata indisponível ou malformado, ou ausente no cache com `--offline`. |
-| `5` | Origem fora da allowlist (metadata, redirect ou arquivo resolvido). |
-| `130` | Cancelado pelo usuário (Ctrl+C). |
-
-Os códigos `6`, `7` e `8` estão reservados para conflito, privilégio e
-dependência nativa ausente, usados a partir da instalação (F2).
+| `5` | Integridade: origem fora da allowlist (metadata, redirect ou arquivo resolvido), SHA-512 divergente ou arquivo recusado na extração. |
+| `6` | Conflito: outra operação em andamento na raiz ou item existente com tipo incompatível. |
+| `7` | Privilégio inadequado: escopo user como root ou `--install-dir` em local do sistema ou de outro usuário. |
+| `8` | Instalação gravada, mas a validação falhou com dependências nativas ausentes. |
+| `130` | Cancelado pelo usuário (Ctrl+C ou confirmação recusada). |
