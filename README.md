@@ -6,7 +6,7 @@ extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuár
 
 > **Estado:** em desenvolvimento (fase F7). Release atual:
 > [v0.2.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.2.0).
-> Implementado em Linux e Windows (escopo user) e no Linux (escopo global):
+> Implementado em Linux e Windows (escopos user e global):
 > `list --available|--installed`,
 > `install` (inclusive `--archive` e `--from-global-json`), `uninstall`, `env` e
 > `doctor` ([referência da CLI](docs/cli.md)). O restante
@@ -80,12 +80,13 @@ para as variáveis do usuário (`HKCU\Environment`), valendo em terminais novos:
 dotnetscope install sdk lts --yes                 # zip oficial, DOTNET_ROOT e Path do usuário
 dotnetscope env show | Out-String | Invoke-Expression   # somente para a sessão atual
 dotnetscope env remove                            # restaura os valores anteriores do registro
+dotnetscope install runtime 9.0 --scope global --yes   # terminal elevado: instalador oficial verificado (Authenticode)
 ```
 
 ## Uso planejado
 
 ```bash
-dotnetscope install sdk lts --scope global             # Windows e macOS, terminal elevado (F7c e F7d)
+dotnetscope install sdk lts --scope global             # macOS (F7d)
 dotnetscope install sdk lts                            # macOS, escopo user (F8)
 ```
 

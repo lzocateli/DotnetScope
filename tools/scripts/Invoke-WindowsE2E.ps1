@@ -11,6 +11,10 @@ runner hospedado pelo GitHub (GITHUB_ACTIONS=true e RUNNER_ENVIRONMENT=github-ho
 que e descartado ao fim do job. Em estacoes de desenvolvimento, use os testes de
 integracao, que usam uma subchave isolada do registro.
 
+.PARAMETER Scenario
+user (tests/e2e/install-user.ps1), global (tests/e2e/install-global.ps1:
+instalador oficial .exe em %ProgramFiles%\dotnet) ou all. Padrao: all.
+
 .PARAMETER Sdk
 Versao do SDK a instalar. Padrao: lts.
 
@@ -37,6 +41,9 @@ Codigos: 0 sucesso; 1 cenario reprovado; 2 erro de uso ou ambiente nao efemero.
 #requires -Version 7.0
 [CmdletBinding(PositionalBinding = $false)]
 param(
+    [ValidateSet('user', 'global', 'all')]
+    [string] $Scenario = 'all',
+
     [string] $Sdk = 'lts',
 
     [string] $Runtime = '9.0',
@@ -75,5 +82,12 @@ if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
     exit 2
 }
 
-& (Join-Path $repositoryRoot 'tests/e2e/install-user.ps1') -Binary $binary -Sdk $Sdk -Runtime $Runtime
-exit $(if ($?) { 0 } else { 1 })
+if ($Scenario -in 'user', 'all') {
+    & (Join-Path $repositoryRoot 'tests/e2e/install-user.ps1') -Binary $binary -Sdk $Sdk -Runtime $Runtime
+}
+
+if ($Scenario -in 'global', 'all') {
+    & (Join-Path $repositoryRoot 'tests/e2e/install-global.ps1') -Binary $binary
+}
+
+exit 0

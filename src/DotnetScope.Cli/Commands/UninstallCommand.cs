@@ -39,6 +39,18 @@ internal static class UninstallCommand
                 string root;
                 InstallationManifestStore manifest;
                 IUserEnvironmentConfigurator configurator;
+                if (parseResult.GetValue(scope) == "global" && services.DetectRid().StartsWith("win-", StringComparison.Ordinal))
+                {
+                    if (parseResult.GetValue(installDir) is not null)
+                    {
+                        throw new DotnetScopeException(ExitCodes.Usage, "No Windows, o escopo global não aceita --install-dir: o instalador oficial define a raiz.");
+                    }
+
+                    return await UninstallWindowsAsync(
+                        services, request.Component, request.Version, parseResult.GetValue(dryRun), parseResult.GetValue(output) == "json", diagnostics, ct)
+                        .ConfigureAwait(false);
+                }
+
                 if (parseResult.GetValue(scope) == "global")
                 {
                     var (layout, globalRoot) = GlobalScope.Prepare(services, services.DetectRid(), parseResult.GetValue(installDir));
@@ -118,6 +130,42 @@ internal static class UninstallCommand
             },
             cancellationToken));
         return command;
+    }
+
+    /// <summary>
+    /// Windows: remove somente instalações registradas pelo dotnetscope, executando o mesmo instalador oficial
+    /// (SHA-512 e Authenticode verificados) com <c>/uninstall</c> (D-F7-4).
+    /// </summary>
+    private static async Task<int> UninstallWindowsAsync(
+        CliServices services, ComponentKind component, DotnetVersion version, bool dryRun, bool json, IDiagnosticSink diagnostics, CancellationToken cancellationToken)
+    {
+        var layout = GlobalScope.PrepareWindows(services);
+        var manifest = new InstallationManifestStore(layout.ManifestFile);
+        var record = manifest.Read().FirstOrDefault(r =>
+            r.Component == component && r.Version == version.ToString() && r.FileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            ?? throw new DotnetScopeException(
+                ExitCodes.NotFound,
+                $"{component.ToName()} {version} não foi instalado pelo dotnetscope no escopo global; use Aplicativos instalados do Windows para outras instalações.");
+
+        if (!dryRun)
+        {
+            await services.UninstallWindowsSetup(layout, record, diagnostics, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (json)
+        {
+            var document = new UninstallJson(
+                dryRun ? "planned" : "removed", component.ToName(), version.ToString(), record.Root, "installer", [record.FileName], [], "unchanged");
+            await services.Output.WriteLineAsync(JsonSerializer.Serialize(document, F4JsonContext.Default.UninstallJson)).ConfigureAwait(false);
+        }
+        else
+        {
+            await services.Output.WriteLineAsync(dryRun
+                ? $"Plano: remover {component.ToName()} {version} com {record.FileName} /uninstall."
+                : $"Removido: {component.ToName()} {version} pelo instalador oficial ({record.FileName} /uninstall).").ConfigureAwait(false);
+        }
+
+        return ExitCodes.Success;
     }
 
     /// <summary>

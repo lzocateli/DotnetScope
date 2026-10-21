@@ -101,7 +101,8 @@ chaves são contrato estável: remoções ou renomeações são mudanças incomp
 Instala um SDK ou runtime a partir do arquivo compactado oficial, verificado por
 SHA-512. Nesta versão funciona no escopo `user`: `.tar.gz` no Linux e no macOS e
 `.zip` no Windows. O escopo `global` está disponível no Linux
-([Escopo global](#escopo-global-linux)); no Windows e no macOS retorna código `2`.
+([Escopo global](#escopo-global-linux)) e no Windows
+([instalador oficial](#escopo-global-no-windows)); no macOS retorna código `2`.
 
 ```text
 dotnetscope install <componente> <versão> [opções]
@@ -112,8 +113,8 @@ dotnetscope install --from-global-json [caminho] [opções]
 
 | Opção | Padrão | Descrição |
 | --- | --- | --- |
-| `--scope` | `user` | `user` ou `global` (somente Linux nesta versão; exige root, ver [Escopo global](#escopo-global-linux)). |
-| `--source` | `auto` | Estratégia do escopo global: `auto`, `archive` ou `apt` (ver [Estratégia apt](#estratégia-apt)). Com `--scope user`, `apt` é erro de uso. |
+| `--scope` | `user` | `user` ou `global` (Linux com root e Windows elevado; ver [Escopo global](#escopo-global-linux) e [Windows](#escopo-global-no-windows)). |
+| `--source` | `auto` | Estratégia do escopo global: `auto`, `archive` ou `apt` no Linux (ver [Estratégia apt](#estratégia-apt)); `auto` ou `installer` no Windows (ver [Escopo global no Windows](#escopo-global-no-windows)). Com `--scope user`, `apt` é erro de uso. |
 | `--install-deps` | `false` | Escopo global: instala as dependências nativas pelo gerenciador de pacotes antes de resolver a versão. Com `--scope user`, é erro de uso. |
 | `--install-dir` | `~/.dotnet` (Windows: `%LOCALAPPDATA%\Microsoft\dotnet`) | Raiz da instalação; precisa ser absoluta. |
 | `--prerelease` | `false` | Permite versões preview/RC. |
@@ -604,6 +605,44 @@ sudo dotnetscope install sdk lts --scope global --install-deps --yes
   `glibc`, `libgcc`, `libstdc++`, `zlib`, `libicu`, `openssl-libs`) ou `apk`
   (`ca-certificates`, `libgcc`, `libstdc++`, `zlib`, `icu-libs`, `libssl3`). Não
   roda em `--dry-run`.
+
+## Escopo global no Windows
+
+No Windows, `--scope global` usa somente o instalador oficial `.exe` da Microsoft
+(decisão da F7c), que instala em `%ProgramFiles%\dotnet` e configura o `Path` da
+máquina e o registro.
+
+```powershell
+# Terminal elevado (Executar como administrador)
+dotnetscope install runtime 9.0 --scope global --yes
+dotnetscope uninstall runtime 9.0.4 --scope global
+```
+
+- Exige token elevado (código `7` sem ele); o dotnetscope não se autoeleva.
+- `--source archive|apt`, `--archive`, `--install-dir` e `--install-deps` são
+  erro de uso (código `2`). `env` e `doctor` com `--scope global` também, porque o
+  ambiente é do instalador.
+- O instalador é baixado da allowlist para um staging exclusivo em
+  `%ProgramData%\dotnetscope\staging`, com ACL protegida só para Administradores
+  e SYSTEM. Um `%ProgramData%\dotnetscope` pré-existente de outro dono ou com
+  escrita para outras identidades é recusado (código `7`).
+- Com o arquivo aberto sem compartilhar escrita nem exclusão, a CLI confere de
+  novo o SHA-512 do metadata e a assinatura Authenticode (`WinVerifyTrust`, com
+  assinante Microsoft Corporation) e só então executa `/install /quiet
+  /norestart`, com `TEMP` no staging. Assinatura inválida ou de terceiro
+  retorna código `5` sem executar nada.
+- Códigos do instalador: `3010`/`1641` são sucesso com aviso de reinicialização;
+  `1618` (outra instalação em andamento) retorna código `6`; outros, código `1`.
+- Ctrl+C durante a execução do instalador não o interrompe: a CLI avisa, espera
+  o resultado real e registra a instalação, para não deixar a máquina fora do
+  controle do dotnetscope. Após 30 minutos, o instalador é encerrado (código `1`).
+- O assinante precisa ter `O` e `CN` exatamente iguais a `Microsoft Corporation`.
+- Componente já presente em `%ProgramFiles%\dotnet` é `alreadyInstalled` e não é
+  registrado. O manifesto global fica em `%ProgramData%\dotnetscope`;
+  `environment.status` é `package`.
+- `uninstall --scope global` remove somente o que o dotnetscope registrou,
+  executando o mesmo instalador verificado com `/uninstall`; sem registro,
+  retorna código `3`.
 
 ## Manifesto de instalações
 

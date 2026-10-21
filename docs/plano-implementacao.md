@@ -328,7 +328,7 @@ runners efêmeros.
 | F6 | Windows user (zip + registro + `WM_SETTINGCHANGE`) | `dotnet` disponível em novo terminal; reversão do registro | concluída (testes nativos e E2E em `windows-2025`; [referência](cli.md#windows)) |
 | F7a | Global Linux por arquivo (D4): elevação, diretórios confiáveis, estado e cache globais, `/etc/profile.d`, `install_location`, `uninstall`/`env`/`list`/`doctor` globais | R03, R05–R09, R13, R14 (parcial), R17, R18 (`archive`) e R20 do [modelo de ameaças](modelo-de-ameacas-f7.md) com testes negativos; E2E Ubuntu 24.04 e Fedora 41 | concluída |
 | F7b | Global Linux por `apt` (`--source auto\|archive\|apt`) e `--install-deps` | R10–R12, R19 | concluída (E2E apt em Ubuntu 24.04) |
-| F7c | Global Windows: instalador `.exe` com Authenticode e `archive` com `HKLM` | R01–R04, R10, R16, R18 | pendente |
+| F7c | Global Windows: instalador `.exe` com Authenticode (sem `archive`, decisão de 2026-10-21) | R01–R04, R16, R17, R18 | implementada; testes nativos e E2E no Windows pendentes (commit local, sem CI) |
 | F7d | Global macOS: `.pkg` com assinatura e `archive` com `/etc/paths.d` | R01–R03, R10, R16 | pendente |
 | F8 | macOS user | E2E em runner macOS | pendente |
 | F9 | Assinatura, SBOM, Authenticode/`.pkg`, `.deb`/APT, winget, Homebrew | artefatos assinados e verificáveis | pendente |
@@ -382,6 +382,17 @@ com milestone, e é entregue por PR com as evidências do template.
     porque o Windows PowerShell 5.1 pode não habilitá-lo por padrão;
   - smoke de `linux-arm64` e `win-arm64` roda em runners Arm64 nativos
     (`ubuntu-24.04-arm`, `windows-11-arm`), sem emulação.
+- Decisões de implementação da F7c:
+  - no Windows, o escopo global usa somente o instalador oficial `.exe`; a
+    estratégia `archive` em `%ProgramFiles%\dotnet` com `HKLM` foi descartada
+    pelo revisor humano em 2026-10-21 (mais risco e código, benefício pequeno) e
+    só volta se houver demanda;
+  - o estado global fica em `%ProgramData%\dotnetscope` com ACL protegida
+    (Administradores e SYSTEM); o instalador roda do staging nesse diretório,
+    com `TEMP` apontando para ele, e fica aberto sem compartilhar escrita
+    enquanto o hash e a assinatura são conferidos e ele executa;
+  - a assinatura exige assinante `O=Microsoft Corporation`, sem verificação de
+    revogação online.
 - Decisões de implementação da F7b:
   - `--source auto` usa o `apt` somente quando o candidato é exatamente a versão
     que o metadata resolveria (por exemplo, `dotnet-runtime-10.0` 10.0.13 no

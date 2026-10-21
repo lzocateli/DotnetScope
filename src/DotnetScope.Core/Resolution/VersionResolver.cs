@@ -4,7 +4,8 @@ using DotnetScope.Core.Versions;
 namespace DotnetScope.Core.Resolution;
 
 /// <summary>Plataforma alvo e política de prerelease usadas na resolução.</summary>
-public sealed record ResolveOptions(string Rid, bool AllowPrerelease);
+/// <param name="Installer">No Windows, resolve o instalador oficial (<c>.exe</c>) em vez do <c>.zip</c> (escopo global).</param>
+public sealed record ResolveOptions(string Rid, bool AllowPrerelease, bool Installer = false);
 
 /// <summary>Versão candidata de um componente, com o arquivo compactado oficial para o RID quando existir.</summary>
 public sealed record VersionCandidate(
@@ -51,7 +52,7 @@ public sealed record VersionQueryResult(
             throw new DotnetScopeException(
                 ExitCodes.NotFound,
                 $"Nenhuma versão de {Request} no canal {Channel.Channel} tem o arquivo " +
-                $"{VersionResolver.ExpectedArchiveName(Request.Component, Options.Rid)} com SHA-512.{hint}");
+                $"{VersionResolver.ExpectedArchiveName(Request.Component, Options.Rid, Options.Installer)} com SHA-512.{hint}");
         }
 
         if (!candidate.Archive!.IsTrusted)
@@ -99,7 +100,7 @@ public sealed class VersionResolver(IReleaseMetadataSource source)
         var channel = SelectChannel(request.Version, channels, options);
         var releases = await source.GetChannelReleasesAsync(channel, cancellationToken).ConfigureAwait(false);
 
-        var matching = CollectCandidates(releases, request.Component, options.Rid)
+        var matching = CollectCandidates(releases, request.Component, options.Rid, options.Installer)
             .Where(candidate => Matches(request.Version, candidate.Version))
             .ToList();
 
@@ -145,7 +146,7 @@ public sealed class VersionResolver(IReleaseMetadataSource source)
         foreach (var channel in ordered)
         {
             var releases = await source.GetChannelReleasesAsync(channel, cancellationToken).ConfigureAwait(false);
-            var candidates = CollectCandidates(releases, ComponentKind.Sdk, options.Rid)
+            var candidates = CollectCandidates(releases, ComponentKind.Sdk, options.Rid, options.Installer)
                 .Where(c => c.Archive is not null && c.Version >= minimum)
                 .Where(c => options.AllowPrerelease || !c.Version.IsPrerelease || c.Version == sdk.Version)
                 .ToList();
@@ -192,19 +193,19 @@ public sealed class VersionResolver(IReleaseMetadataSource source)
         };
     }
 
-    private static List<VersionCandidate> CollectCandidates(ChannelReleases releases, ComponentKind component, string rid) =>
+    private static List<VersionCandidate> CollectCandidates(ChannelReleases releases, ComponentKind component, string rid, bool installer) =>
         releases.Releases
             .SelectMany(release => release.Components
                 .Where(c => c.Component == component)
-                .Select(c => new VersionCandidate(c.Version, release.ReleaseVersion, release.ReleaseDate, release.Security, FindArchive(c, rid))))
+                .Select(c => new VersionCandidate(c.Version, release.ReleaseVersion, release.ReleaseDate, release.Security, FindArchive(c, rid, installer))))
             .GroupBy(candidate => candidate.Version)
             .Select(group => group.First())
             .ToList();
 
     internal static bool IsWindowsRid(string rid) => rid.StartsWith("win-", StringComparison.OrdinalIgnoreCase);
 
-    internal static string ExpectedArchiveName(ComponentKind component, string rid) =>
-        component.ArchivePrefix() + rid + (IsWindowsRid(rid) ? ".zip" : ".tar.gz");
+    internal static string ExpectedArchiveName(ComponentKind component, string rid, bool installer = false) =>
+        component.ArchivePrefix() + rid + (!IsWindowsRid(rid) ? ".tar.gz" : installer ? ".exe" : ".zip");
 
     private static ReleaseChannel SelectChannel(
         VersionSpec spec,
@@ -245,9 +246,9 @@ public sealed class VersionResolver(IReleaseMetadataSource source)
         _ => false,
     };
 
-    private static ReleaseFile? FindArchive(ComponentRelease component, string rid)
+    private static ReleaseFile? FindArchive(ComponentRelease component, string rid, bool installer)
     {
-        var name = ExpectedArchiveName(component.Component, rid);
+        var name = ExpectedArchiveName(component.Component, rid, installer);
         return component.Files.FirstOrDefault(file =>
             file.Sha512 is not null
             && string.Equals(file.Rid, rid, StringComparison.OrdinalIgnoreCase)

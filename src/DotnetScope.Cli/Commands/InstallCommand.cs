@@ -71,10 +71,10 @@ internal static class InstallCommand
         output.AcceptOnlyFromAmong("text", "json");
         var source = new Option<string>("--source")
         {
-            Description = "Estratégia no escopo global: auto (apt se ele tiver exatamente a versão resolvida), archive ou apt",
+            Description = "Estratégia no escopo global: auto, archive ou apt (Linux; auto usa o apt se ele tiver exatamente a versão resolvida) e installer (Windows)",
             DefaultValueFactory = _ => "auto",
         };
-        source.AcceptOnlyFromAmong("auto", "archive", "apt");
+        source.AcceptOnlyFromAmong("auto", "archive", "apt", "installer");
         var installDeps = new Option<bool>("--install-deps")
         {
             Description = "Instala as dependências nativas pelo gerenciador de pacotes (escopo global, Linux)",
@@ -129,8 +129,27 @@ internal static class InstallCommand
         var home = services.HomeDirectory();
         string root;
         GlobalLayout? global = null;
-        if (options.Scope == InstallScope.Global)
+        WindowsGlobalLayout? windows = null;
+        if (options.Scope == InstallScope.Global && rid.StartsWith("win-", StringComparison.Ordinal))
         {
+            // D-F7-5 e decisão da F7c: no Windows, somente o instalador oficial, que define a raiz e o ambiente.
+            if (options.Source is "archive" or "apt" || options.Archive is not null || options.InstallDir is not null || options.InstallDeps)
+            {
+                throw new DotnetScopeException(
+                    ExitCodes.Usage,
+                    "No Windows, o escopo global usa somente o instalador oficial (--source auto ou installer), sem --archive, --install-dir nem --install-deps.");
+            }
+
+            windows = GlobalScope.PrepareWindows(services);
+            root = windows.Root;
+        }
+        else if (options.Scope == InstallScope.Global)
+        {
+            if (options.Source == "installer")
+            {
+                throw new DotnetScopeException(ExitCodes.Usage, "--source installer só se aplica ao escopo global no Windows.");
+            }
+
             (global, root) = GlobalScope.Prepare(services, rid, options.InstallDir);
             GlobalScope.IgnoreUserCertificates(services, diagnostics);
             GlobalScope.EnsureTrustedState(services, global);
@@ -157,7 +176,8 @@ internal static class InstallCommand
         }
 
         var (artifact, requestLabel, needsConfirmation) = await ResolveAsync(
-            services, diagnostics, options, rid, global?.MetadataCacheDirectory, cancellationToken).ConfigureAwait(false);
+            services, diagnostics, options, rid, global?.MetadataCacheDirectory ?? windows?.MetadataCacheDirectory, windows is not null, cancellationToken)
+            .ConfigureAwait(false);
 
         if (artifact.Channel?.Phase == SupportPhase.Eol)
         {
@@ -198,12 +218,13 @@ internal static class InstallCommand
             : await AptPackages.InstalledVersionAsync(services.CommandRunner, apt.Package, cancellationToken).ConfigureAwait(false) == apt.PackageVersion;
 
         // O ambiente é planejado antes de baixar: conflito de DOTNET_ROOT falha sem alterar nada.
-        var target = global is null
+        var target = options.Scope == InstallScope.User
             ? EnvironmentSetup.CreateTarget(root, home, options.TelemetryOptOut)
             : EnvironmentSetup.CreateGlobalTarget(root, options.TelemetryOptOut);
+        var packageManaged = apt is not null || windows is not null;
         IUserEnvironmentConfigurator? configurator = null;
         EnvironmentPlan? environmentPlan = null;
-        if (options.ConfigureEnv && apt is null)
+        if (options.ConfigureEnv && !packageManaged)
         {
             configurator = global is null ? services.CreateEnvironmentConfigurator(home) : services.CreateSystemEnvironment(global);
             environmentPlan = EnvironmentSetup.Plan(services, configurator, target, options.EnvConflict, options.Yes, options.DryRun);
@@ -213,7 +234,7 @@ internal static class InstallCommand
         {
             var status = installed ? "alreadyInstalled" : "planned";
             var planned = environmentPlan is null
-                ? NotConfigured(target, apt, options)
+                ? NotConfigured(target, packageManaged, options)
                 : new EnvironmentOutcome(
                     target,
                     environmentPlan.Skipped ? "skipped" : environmentPlan.HasChanges ? "planned" : "unchanged",
@@ -247,7 +268,8 @@ internal static class InstallCommand
             GlobalScope.EnsureTrustedRoot(services, root);
         }
 
-        using var installer = global is null ? services.CreateInstaller(diagnostics, progress)
+        using var installer = windows is not null ? services.CreateWindowsSetupInstaller(windows, diagnostics, progress)
+            : global is null ? services.CreateInstaller(diagnostics, progress)
             : apt is not null ? services.CreateAptInstaller(global, apt, diagnostics)
             : services.CreateGlobalInstaller(global, diagnostics, progress);
         var result = await installer.InstallAsync(artifact, root, options.Scope, cancellationToken).ConfigureAwait(false);
@@ -256,7 +278,7 @@ internal static class InstallCommand
         EnvironmentOutcome environment;
         if (configurator is null)
         {
-            environment = NotConfigured(target, apt, options);
+            environment = NotConfigured(target, packageManaged, options);
         }
         else if (!result.Validation.Succeeded)
         {
@@ -316,14 +338,14 @@ internal static class InstallCommand
             : null;
     }
 
-    private static EnvironmentOutcome NotConfigured(EnvironmentTarget target, AptCandidate? apt, InstallOptions options) =>
-        apt is not null && options.ConfigureEnv ? new(target, "package", null, [], [], [], null) : Disabled(target);
+    private static EnvironmentOutcome NotConfigured(EnvironmentTarget target, bool packageManaged, InstallOptions options) =>
+        packageManaged && options.ConfigureEnv ? new(target, "package", null, [], [], [], null) : Disabled(target);
 
     private static void ValidateSourceOptions(InstallOptions options)
     {
-        if (options.Scope == InstallScope.User && (options.Source == "apt" || options.InstallDeps))
+        if (options.Scope == InstallScope.User && (options.Source is "apt" or "installer" || options.InstallDeps))
         {
-            throw new DotnetScopeException(ExitCodes.Usage, "--source apt e --install-deps exigem --scope global.");
+            throw new DotnetScopeException(ExitCodes.Usage, "--source apt, --source installer e --install-deps exigem --scope global.");
         }
 
         if (options.Source == "apt" && (options.Archive is not null || options.InstallDir is not null))
@@ -358,6 +380,7 @@ internal static class InstallCommand
         InstallOptions options,
         string rid,
         string? cacheDirectory,
+        bool installer,
         CancellationToken cancellationToken)
     {
         if (options.Archive is not null)
@@ -388,7 +411,7 @@ internal static class InstallCommand
         try
         {
             var resolver = new VersionResolver(source);
-            var resolveOptions = new ResolveOptions(rid, options.AllowPrerelease);
+            var resolveOptions = new ResolveOptions(rid, options.AllowPrerelease, installer);
             if (options.FromGlobalJson)
             {
                 var sdk = GlobalJsonReader.Read(options.GlobalJsonPath, services.CurrentDirectory());
@@ -525,7 +548,7 @@ internal static class InstallCommand
                 "planned" => $"Ambiente: seriam alterados {string.Join(", ", environment.ChangedFiles)}.",
                 "unchanged" => "Ambiente: já configurado.",
                 "skipped" => "Ambiente: não seria alterado (--env-conflict skip).",
-                "package" => "Ambiente: gerenciado pelo pacote (/usr/bin/dotnet).",
+                "package" => "Ambiente: gerenciado pelo pacote ou instalador oficial.",
                 _ => "Ambiente: não seria alterado (--configure-env false).",
             };
             await services.Output.WriteLineAsync(environmentLine).ConfigureAwait(false);
@@ -534,7 +557,7 @@ internal static class InstallCommand
 
         if (environment.Status == "package")
         {
-            await services.Output.WriteLineAsync("Ambiente: gerenciado pelo pacote (/usr/bin/dotnet); nenhum arquivo do dotnetscope foi gravado.").ConfigureAwait(false);
+            await services.Output.WriteLineAsync("Ambiente: gerenciado pelo pacote ou instalador oficial; o dotnetscope não gravou ambiente.").ConfigureAwait(false);
         }
         else if (environment.Status == "disabled")
         {

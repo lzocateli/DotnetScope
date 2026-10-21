@@ -8,11 +8,16 @@ internal static class GlobalScope
 {
     public static (GlobalLayout Layout, string Root) Prepare(CliServices services, string rid, string? installDir, bool requireRoot = true)
     {
-        if (!rid.StartsWith("linux-", StringComparison.Ordinal))
+        if (rid.StartsWith("win-", StringComparison.Ordinal))
         {
             throw new DotnetScopeException(
                 ExitCodes.Usage,
-                "O escopo global está disponível somente no Linux nesta versão; Windows e macOS chegam nas próximas etapas da F7.");
+                "No Windows, o escopo global usa o instalador oficial, que configura o ambiente da máquina; use install e uninstall --scope global.");
+        }
+
+        if (!rid.StartsWith("linux-", StringComparison.Ordinal))
+        {
+            throw new DotnetScopeException(ExitCodes.Usage, "O escopo global ainda não está disponível no macOS nesta versão (F7d).");
         }
 
         // A elevação é verificada antes de qualquer efeito; o dotnetscope nunca chama sudo.
@@ -49,6 +54,21 @@ internal static class GlobalScope
         {
             GlobalLocations.EnsureTrustedFile(Path.Combine(layout.StateDirectory, file), services.StatPath);
         }
+    }
+
+    /// <summary>Windows: exige token elevado (R17) e o estado global protegido em ProgramData (R03, R13).</summary>
+    public static WindowsGlobalLayout PrepareWindows(CliServices services)
+    {
+        if (!services.IsElevated())
+        {
+            throw new DotnetScopeException(
+                ExitCodes.Privilege,
+                "O escopo global exige um terminal elevado (Executar como administrador). O dotnetscope não se autoeleva.");
+        }
+
+        var layout = services.CreateWindowsGlobalLayout();
+        services.EnsureProtectedDirectory(layout.StateDirectory);
+        return layout;
     }
 
     public static void EnsureTrustedRoot(CliServices services, string root) =>

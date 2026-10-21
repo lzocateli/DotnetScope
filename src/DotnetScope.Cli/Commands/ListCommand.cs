@@ -101,14 +101,17 @@ internal static class ListCommand
     private static IReadOnlyList<InstallationRecord> ReadGlobalRecords(CliServices services)
     {
         var rid = services.DetectRid();
-        if (!rid.StartsWith("linux-", StringComparison.Ordinal))
+        var path = rid.StartsWith("linux-", StringComparison.Ordinal) ? services.CreateGlobalLayout(rid).ManifestFile
+            : rid.StartsWith("win-", StringComparison.Ordinal) ? services.CreateWindowsGlobalLayout().ManifestFile
+            : null;
+        if (path is null)
         {
             return [];
         }
 
         try
         {
-            return new InstallationManifestStore(services.CreateGlobalLayout(rid).ManifestFile).Read();
+            return new InstallationManifestStore(path).Read();
         }
         catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
         {

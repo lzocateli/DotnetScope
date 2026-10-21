@@ -110,12 +110,10 @@ public sealed class GlobalScopeTests : IDisposable
         Assert.Equal(0, result.Installer.Calls);
     }
 
-    [Theory]
-    [InlineData("win-x64")]
-    [InlineData("osx-arm64")]
-    public async Task Install_Global_ForaDoLinux_AindaNaoDisponivel(string rid)
+    [Fact]
+    public async Task Install_Global_NoMacOS_AindaNaoDisponivel()
     {
-        var result = await RunAsync(["install", "sdk", "10.0.402", "--scope", "global"], rid: rid);
+        var result = await RunAsync(["install", "sdk", "10.0.402", "--scope", "global"], rid: "osx-arm64");
 
         Assert.Equal(ExitCodes.Usage, result.ExitCode);
     }

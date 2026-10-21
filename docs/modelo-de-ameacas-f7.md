@@ -258,7 +258,7 @@ Estado de implementação (o plano divide a F7 em F7a a F7d):
 | --- | --- |
 | F7a (Linux, `archive`) | R03 e R18 para `archive`; R05, R06, R07, R08, R09, R13, R17 e R20; R10 parcial (raízes de pacote e `dotnet` concorrente no `PATH` do sistema); R14 parcial (data, origem, hash e escopo, sem o usuário que elevou) |
 | F7b (`apt`) | R10, R11, R12 e R19 (implementados); em R07, as variáveis de proxy são repassadas aos gerenciadores de pacotes, que verificam assinaturas |
-| F7c (Windows) | R01 a R04, R16 e R18 para `.exe` |
+| F7c (Windows) | R01 a R04, R16, R17 e R18 para `.exe` (implementados; validação em Windows real pendente); `archive` no Windows descartado pelo revisor humano |
 | F7d (macOS) | R01 a R03 e R16 para `.pkg` |
 
 | ID | Requisito | Ameaças | Verificação |

@@ -59,6 +59,37 @@ internal sealed record CliServices(
 
     public SystemEnvironmentConfigurator CreateSystemEnvironment(GlobalLayout layout) => new(layout, StatPath);
 
+    /// <summary>Processo elevado: root no Linux e macOS, token elevado (UAC) no Windows.</summary>
+    public Func<bool> IsElevated { get; init; } = () => OperatingSystem.IsWindows() ? WindowsSecurity.IsElevated() : UnixUser.IsRoot();
+
+    public Func<WindowsGlobalLayout> CreateWindowsGlobalLayout { get; init; } = WindowsGlobalLayout.CreateDefault;
+
+    /// <summary>Cria ou valida o estado global protegido do Windows (ACL só de Administradores e SYSTEM).</summary>
+    public Action<string> EnsureProtectedDirectory { get; init; } = path =>
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            WindowsSecurity.EnsureProtectedDirectory(path);
+        }
+    };
+
+    public Func<WindowsGlobalLayout, IDiagnosticSink, IProgress<DownloadProgress>?, IArtifactInstaller> CreateWindowsSetupInstaller { get; init; } =
+        (layout, diagnostics, progress) => OperatingSystem.IsWindows()
+            ? WindowsSetupInstaller.CreateOfficial(layout, diagnostics, progress)
+            : throw new PlatformNotSupportedException("O instalador oficial só executa no Windows.");
+
+    public Func<WindowsGlobalLayout, InstallationRecord, IDiagnosticSink, CancellationToken, Task> UninstallWindowsSetup { get; init; } =
+        async (layout, record, diagnostics, cancellationToken) =>
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                throw new PlatformNotSupportedException("O instalador oficial só executa no Windows.");
+            }
+
+            using var installer = WindowsSetupInstaller.CreateOfficial(layout, diagnostics, null);
+            await installer.UninstallAsync(record, cancellationToken).ConfigureAwait(false);
+        };
+
     /// <summary>Ferramentas do sistema (apt-get, apt-cache, dnf, apk), substituídas nos testes.</summary>
     public ISystemCommandRunner CommandRunner { get; init; } = new SystemCommandRunner();
 
