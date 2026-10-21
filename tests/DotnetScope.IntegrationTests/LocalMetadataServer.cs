@@ -142,7 +142,9 @@ internal sealed class LocalMetadataServer : IDisposable
             {
                 context = await _listener.GetContextAsync();
             }
-            catch (Exception exception) when (exception is HttpListenerException or ObjectDisposedException or InvalidOperationException)
+            // No Windows, GetContextAsync após Close() pode falhar com ArgumentException (handle inválido).
+            catch (Exception exception) when (exception is HttpListenerException or ObjectDisposedException or InvalidOperationException
+                || (exception is ArgumentException && !_listener.IsListening))
             {
                 return;
             }
