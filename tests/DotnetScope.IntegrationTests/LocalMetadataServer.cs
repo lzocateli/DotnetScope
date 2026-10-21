@@ -11,15 +11,30 @@ namespace DotnetScope.IntegrationTests;
 internal sealed class LocalMetadataServer : IDisposable
 {
     private const string OfficialPrefix = "https://builds.dotnet.microsoft.com/dotnet/release-metadata/";
-    private readonly HttpListener _listener = new();
+    private readonly HttpListener _listener;
     private readonly Task _loop;
 
     public LocalMetadataServer()
     {
-        var port = FreePort();
-        BaseUrl = new Uri($"http://127.0.0.1:{port}/");
-        _listener.Prefixes.Add(BaseUrl.ToString());
-        _listener.Start();
+        // A porta livre pode ser tomada por outro teste em paralelo entre a sondagem e o Start; tenta novamente.
+        for (var attempt = 1; ; attempt++)
+        {
+            var listener = new HttpListener();
+            var url = new Uri($"http://127.0.0.1:{FreePort()}/");
+            listener.Prefixes.Add(url.ToString());
+            try
+            {
+                listener.Start();
+                _listener = listener;
+                BaseUrl = url;
+                break;
+            }
+            catch (HttpListenerException) when (attempt < 20)
+            {
+                listener.Close();
+            }
+        }
+
         _loop = Task.Run(LoopAsync);
     }
 
@@ -52,13 +67,20 @@ internal sealed class LocalMetadataServer : IDisposable
 
     public void Dispose()
     {
-        _listener.Stop();
-        _listener.Close();
+        // No Linux, Close() após Stop() pode tentar reassociar a porta ao remover prefixos; Close() já encerra.
+        try
+        {
+            _listener.Close();
+        }
+        catch (HttpListenerException)
+        {
+        }
+
         try
         {
             _loop.GetAwaiter().GetResult();
         }
-        catch (ObjectDisposedException)
+        catch (Exception exception) when (exception is ObjectDisposedException or HttpListenerException)
         {
         }
     }
@@ -125,39 +147,51 @@ internal sealed class LocalMetadataServer : IDisposable
                 return;
             }
 
-            var path = context.Request.Url!.AbsolutePath;
-            Requests.Enqueue(path);
-            var response = context.Response;
-            if (Files.TryGetValue(path, out var content))
+            try
             {
-                await ServeFileAsync(context.Request, response, content);
-                continue;
+                await HandleAsync(context);
             }
-
-            using var disposable = response;
-            if (Overrides.TryGetValue(path, out var handler))
+            catch (Exception exception) when (exception is HttpListenerException or ObjectDisposedException or IOException or InvalidOperationException)
             {
-                await handler(response);
-                continue;
+                // O cliente pode encerrar a conexão (por exemplo, após recusar uma resposta); o servidor continua.
             }
-
-            var name = path switch
-            {
-                "/releases-index.json" => "releases-index.json",
-                _ when path.EndsWith("/releases.json", StringComparison.Ordinal) => $"releases-{path.Trim('/').Split('/')[0]}.json",
-                _ => null,
-            };
-
-            if (name is null || !File.Exists(FixturePath(name)))
-            {
-                response.StatusCode = 404;
-                continue;
-            }
-
-            var body = Fixture(name);
-            response.ContentType = "application/json";
-            response.ContentLength64 = body.Length;
-            await response.OutputStream.WriteAsync(body);
         }
+    }
+
+    private async Task HandleAsync(HttpListenerContext context)
+    {
+        var path = context.Request.Url!.AbsolutePath;
+        Requests.Enqueue(path);
+        var response = context.Response;
+        if (Files.TryGetValue(path, out var content))
+        {
+            await ServeFileAsync(context.Request, response, content);
+            return;
+        }
+
+        using var disposable = response;
+        if (Overrides.TryGetValue(path, out var handler))
+        {
+            await handler(response);
+            return;
+        }
+
+        var name = path switch
+        {
+            "/releases-index.json" => "releases-index.json",
+            _ when path.EndsWith("/releases.json", StringComparison.Ordinal) => $"releases-{path.Trim('/').Split('/')[0]}.json",
+            _ => null,
+        };
+
+        if (name is null || !File.Exists(FixturePath(name)))
+        {
+            response.StatusCode = 404;
+            return;
+        }
+
+        var body = Fixture(name);
+        response.ContentType = "application/json";
+        response.ContentLength64 = body.Length;
+        await response.OutputStream.WriteAsync(body);
     }
 }
