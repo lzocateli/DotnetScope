@@ -10,10 +10,14 @@
 | Data | 2026-10-21 |
 
 Este documento cumpre a exigência da [seção 14 do plano](plano-implementacao.md#14-segurança):
-"threat model antes da F7". Ele descreve o que a F7 vai construir, o que pode
+"threat model antes da F7". Ele registra o desenho original da F7, o que pode
 dar errado quando o DotnetScope roda com privilégio de administrador e quais
-mitigações e testes viram requisitos da fase. Nada aqui está implementado; as
+mitigações e testes viram requisitos da fase. As
 [decisões](#7-decisões) foram aprovadas pelo revisor humano em 2026-10-21.
+O [estado de implementação](#6-requisitos-derivados-para-a-f7) registra a
+entrega posterior; a [referência da CLI](cli.md) descreve o comportamento atual.
+Requisitos originais são preservados para rastreabilidade e não significam que
+todas as alternativas inicialmente consideradas foram implementadas.
 
 ## 1. Escopo
 
@@ -22,12 +26,13 @@ A F7 adiciona o escopo `global` (plano, [seções 4.2 e 5](plano-implementacao.m
 | SO | `--source auto` | Alternativas | Ambiente persistente |
 | --- | --- | --- | --- |
 | Linux | `apt` quando o canal/versão existe nas fontes configuradas | `archive` em `/usr/local/share/dotnet` | `/etc/profile.d/dotnetscope.sh` e `/etc/dotnet/install_location_<arch>` |
-| Windows | instalador oficial `.exe` (`/install /quiet /norestart`) | `archive` em `%ProgramFiles%\dotnet`, se o destino não for gerenciado por instalador | `HKLM\...\Session Manager\Environment` e `HKLM\SOFTWARE\dotnet\Setup\InstalledVersions\<arch>\InstallLocation` |
-| macOS | `.pkg` oficial (`installer -pkg`) | `archive` em `/usr/local/share/dotnet`, se o destino não for gerenciado por `.pkg` | `/etc/paths.d/dotnetscope` |
+| Windows | instalador oficial `.exe` (`/install /quiet /norestart`) | nenhuma; `archive` descartado na F7c | ambiente e registro gerenciados pelo instalador oficial |
+| macOS | `.pkg` oficial (`installer -pkg`) | nenhuma; `archive` descartado na F7d | `/etc/paths.d`, gerenciado pelo instalador oficial |
 
 Também entram `--install-deps` (dependências nativas via gerenciador de
 pacotes, só Linux) e `uninstall`, `list --installed`, `env` e `doctor` com
-`--scope global`.
+`--scope global`, conforme as limitações por SO da CLI. `env` e `doctor`
+globais são próprios do Linux; no macOS não há desinstalação automática do `.pkg`.
 
 Fora do escopo deste modelo: o escopo `user` (já entregue e coberto pelas
 regras de segurança atuais), a cadeia de release do próprio DotnetScope
@@ -261,6 +266,13 @@ Estado de implementação (o plano divide a F7 em F7a a F7d):
 | F7c (Windows) | R01 a R04, R16, R17 e R18 para `.exe` (implementados e validados em Windows real); `archive` no Windows descartado pelo revisor humano |
 | F7d (macOS) | R01 a R03, R16 e R17 para `.pkg` (implementados e validados em macOS real); `archive` no macOS descartado pelo revisor humano; T04 com raiz do `.pkg` de outro dono só gera aviso |
 
+Os caminhos de estado do macOS são `/var/db/dotnetscope`, conforme a decisão
+posterior da F7d no plano; referências originais a `/var/cache` e `/var/lib`
+abaixo descrevem o desenho Linux. R09 não exige edição direta de ambiente pelo
+DotnetScope no Windows/macOS, pois isso ficou a cargo do instalador oficial.
+R14 continua parcial: a ausência do usuário que elevou não deve ser tratada
+como requisito plenamente entregue.
+
 | ID | Requisito | Ameaças | Verificação |
 | --- | --- | --- | --- |
 | R01 | Manter a allowlist HTTPS, recusar redirects para fora dela e conferir o SHA-512 do metadata antes de extrair ou executar qualquer artefato global. | T01 | Testes existentes, estendidos a `.exe` e `.pkg`: hash divergente retorna código `5` sem executar nada. |
@@ -305,6 +317,13 @@ delas reduzem os casos a tratar.
 | D-F7-4 | Como remover instalações feitas por `.exe` e `.pkg`? | `.exe /uninstall /quiet` com a verificação de R02; `.pkg` sem remoção automática, com orientação (R18). | Reaproveita R02; nada novo no macOS. |
 | D-F7-5 | `--install-dir` no escopo global do Windows | Aceita qualquer diretório que passe em R05. | R05 já é obrigatório. |
 
+D-F7-5 acima preserva a decisão original. Ela foi superada pela decisão humana
+da F7c, de 2026-10-21, registrada no
+[plano](plano-implementacao.md#16-riscos-e-questões-em-aberto): Windows global
+usa somente `.exe`, sem `archive` e sem `--install-dir`. A F7d também descartou
+`archive` no macOS. Os diagramas de desenho não autorizam reintroduzir essas
+alternativas.
+
 ## 8. Riscos residuais
 
 - Comprometimento da Microsoft (metadata e assinatura juntos): fora do controle
@@ -347,8 +366,8 @@ flowchart TB
     end
     subgraph E2E["E2E em ambiente descartável"]
         e1["Ubuntu e Fedora: archive e apt global"]
-        e2["windows-2025: instalador .exe e archive"]
-        e3["macos-15: .pkg e archive"]
+        e2["windows-2025: instalador .exe"]
+        e3["macos-15: .pkg"]
     end
     Unit --> Int --> E2E
 ```
@@ -356,6 +375,6 @@ flowchart TB
 ## 10. Referências
 
 - [Plano de implementação](plano-implementacao.md): seções 4.2, 5, 9, 14 e 15.
-- [Referência da CLI](cli.md): comportamento atual do escopo user.
+- [Referência da CLI](cli.md): comportamento atual dos escopos user e global.
 - [Política de segurança](../.github/SECURITY.md).
 - [Regras de segurança do repositório](../.github/instructions/security.instructions.md).

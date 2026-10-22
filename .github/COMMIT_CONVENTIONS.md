@@ -31,15 +31,15 @@ A descrição é em português brasileiro, no imperativo, começa com minúscula
 Exemplos:
 
 ```text
-feat(install): adiciona instalação de runtime aspnetcore no escopo user
-fix(env): preserva bloco de terceiros ao detectar DOTNET_ROOT divergente
-docs(cli): documenta códigos de saída do comando uninstall
+feat(install): adicione instalação de runtime aspnetcore no escopo user
+fix(env): preserve bloco de terceiros ao detectar DOTNET_ROOT divergente
+docs(cli): documente códigos de saída do comando uninstall
 ```
 
 Mudança incompatível usa `!` e rodapé com impacto e migração:
 
 ```text
-feat(env)!: move o bloco gerenciado para ~/.config/dotnetscope/env.sh
+feat(env)!: mova o bloco gerenciado para ~/.config/dotnetscope/env.sh
 
 BREAKING CHANGE: perfis configurados por versões anteriores devem executar
 `dotnetscope env apply` para migrar o bloco antigo.

@@ -512,8 +512,9 @@ O código de saída é `0` quando não restam erros (ou todos foram corrigidos) 
 
 `--scope global` instala para todos os usuários da máquina. Os requisitos vêm do
 [modelo de ameaças da F7](modelo-de-ameacas-f7.md). As estratégias são `archive`
-(instalação por arquivo, descrita nesta seção) e [`apt`](#estratégia-apt); Windows
-e macOS chegam nas próximas etapas da F7.
+(instalação por arquivo, descrita nesta seção) e [`apt`](#estratégia-apt).
+O escopo global também está disponível no [Windows](#escopo-global-no-windows)
+e no [macOS](#escopo-global-no-macos) pelos instaladores oficiais.
 
 ```bash
 sudo dotnetscope install sdk lts --scope global --yes
@@ -730,7 +731,7 @@ nunca é sobrescrito: a instalação é desfeita e a CLI retorna código `1`.
 | --- | --- |
 | `0` | Sucesso. |
 | `1` | Erro inesperado (detalhes com `--verbose`). |
-| `2` | Uso inválido: opção, versão ou componente inválido, prerelease exata sem `--prerelease`, escopo global, confirmação ausente sem terminal. |
+| `2` | Uso inválido: opção, versão ou componente inválido, prerelease exata sem `--prerelease`, combinação não suportada de comando/opções no escopo global, confirmação ausente sem terminal. |
 | `3` | Canal, versão ou artefato inexistente para o RID; plataforma ainda não suportada pelo `install`. |
 | `4` | Falha de rede, metadata indisponível ou malformado, ou ausente no cache com `--offline`. |
 | `5` | Integridade: origem fora da allowlist (metadata, redirect ou arquivo resolvido), SHA-512 divergente ou arquivo recusado na extração. |

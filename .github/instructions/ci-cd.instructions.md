@@ -14,7 +14,8 @@ applyTo: ".github/workflows/**, .github/dependabot.yml, .github/release.yml"
 - Publique Native AOT por RID no próprio SO: `linux-x64`, `linux-arm64`, `linux-musl-x64`, `win-x64`, `win-arm64`, `osx-arm64`, `osx-x64`. Linux glibc compila em base antiga para maximizar compatibilidade.
 - Publicação AOT falha com qualquer aviso de trimming ou AOT.
 - E2E de cada RID roda o binário publicado em ambiente limpo, sem .NET pré-instalado.
-- Release gera arquivos `tar.gz`/`zip`, `SHA256SUMS`, assinatura, SBOM e atestação de proveniência; artefatos publicados são imutáveis.
+- Release gera arquivos `tar.gz`/`zip`, `.deb`, instaladores, `SHA256SUMS`, SBOM e atestações Sigstore keyless de proveniência e SBOM. Authenticode e Developer ID dos binários próprios estão fora da F9 sem custo; não os confunda com a verificação de assinatura dos instaladores oficiais da Microsoft.
+- Artefatos publicados devem ser imutáveis; a limitação atual de reexecução está registrada no [processo de release](../../docs/release.md#limitações-conhecidas).
 - Versões seguem SemVer; tags `vX.Y.Z` disparam publicação somente após aprovação no Environment `release`.
 - Cacheie somente conteúdo reprodutível; restore usa lock file em modo travado.
 - Não adicione workflow antes de existir comando local equivalente e validado em `tools/scripts/`.

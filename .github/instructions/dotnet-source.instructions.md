@@ -9,7 +9,7 @@ applyTo: "src/**, Directory.Build.props, Directory.Packages.props, global.json, 
 - Use .NET 10 LTS, `Nullable`, `ImplicitUsings`, `TreatWarningsAsErrors` e analyzers ativos; versões de pacotes ficam centralizadas em `Directory.Packages.props`.
 - Todo projeto executável é compatível com Native AOT: `IsAotCompatible`, `PublishAot`, `InvariantGlobalization` e avisos de trimming/AOT como erro.
 - Sem reflexão própria, `dynamic`, `Assembly.Load` ou serializadores baseados em reflexão; JSON usa `JsonSerializerContext` (source generation) e P/Invoke usa `LibraryImport`.
-- Respeite as camadas: `DotnetScope.Cli` (parsing, UX, códigos de saída) → `DotnetScope.Core` (domínio e políticas, sem I/O) → `DotnetScope.Infrastructure` (HTTP, filesystem, processos, registro, perfis). `Core` não referencia `Infrastructure`.
+- Respeite as camadas: `DotnetScope.Cli` compõe `DotnetScope.Core` (domínio e políticas, sem I/O) e `DotnetScope.Infrastructure` (HTTP, filesystem, processos, registro, perfis). `Infrastructure` referencia `Core`, nunca o inverso.
 - Dependências de plataforma passam por interfaces (`IPlatformDetector`, `IReleaseMetadataClient`, `IInstallStrategy`, `IEnvironmentConfigurator`, `IProcessRunner`, `IFileSystem`) e são escolhidas por SO e escopo na composição.
 - Use tipos imutáveis (`record`) para `InstallRequest`, `VersionSpec`, `ResolvedArtifact`, `InstallPlan` e resultados.
 - Propague `CancellationToken`; não use `.Result`, `.Wait()` ou `async void`. Ctrl+C cancela, limpa staging e mantém o estado consistente.

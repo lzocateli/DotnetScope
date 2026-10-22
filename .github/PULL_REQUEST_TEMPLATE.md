@@ -14,6 +14,17 @@
 - Fase do plano (`docs/plano-implementacao.md`):
 - ADR:
 
+## Contribuição e revisão
+
+- [ ] Escopo confirmado pelo mantenedor na Issue vinculada
+- [ ] Li CONTRIBUTING e o código de conduta e tenho o direito de contribuir sob MIT
+
+Somente `@lzocateli` aprova e integra contribuições na `main`. PRs do próprio
+mantenedor usam a exceção de revisão descrita em
+[GOVERNANCE](https://github.com/lzocateli/DotnetScope/blob/main/.github/GOVERNANCE.md),
+sem dispensar os checks obrigatórios. Autorização para rodar workflow de fork
+não é aprovação de merge.
+
 ## Áreas
 
 - [ ] CLI
@@ -67,6 +78,7 @@ Comandos e resultados:
 
 <!-- Riscos residuais e validações não executadas. -->
 
-Registre gates não executados como `NOT RUN`, com motivo; não marque aprovação
+Registre gates não executados como `NOT RUN`, com motivo, e gates não aplicáveis
+como `N/A`, com justificativa; não marque aprovação
 sem evidência. Reviews são read-only. Este PR não autoriza commit, push, merge,
 publicação ou deploy por um agente.

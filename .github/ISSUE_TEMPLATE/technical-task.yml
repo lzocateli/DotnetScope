@@ -1,7 +1,7 @@
 name: Tarefa técnica
 description: Registre manutenção técnica com resultado verificável
 title: "[Task]: "
-labels: ["type:task", "status:triage"]
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:

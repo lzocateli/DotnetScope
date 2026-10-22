@@ -1,7 +1,7 @@
 name: Relatar defeito
 description: Registre um comportamento incorreto reproduzível
 title: "[Bug]: "
-labels: ["type:bug", "status:triage"]
+labels: ["bug"]
 body:
   - type: markdown
     attributes:

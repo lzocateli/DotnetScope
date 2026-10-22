@@ -2,7 +2,8 @@
 
 | Campo | Valor |
 | --- | --- |
-| Status | aprovado para F0 (decisões de 2026-10-20) |
+| Status inicial | aprovado para F0 (decisões de 2026-10-20) |
+| Estado de entrega | F0 a F9 concluídas conforme seção 15; questões em aberto na seção 16 |
 | Origem | IA assistida |
 | Revisor humano | Lincoln Zocateli |
 | Repositório | <https://github.com/lzocateli/DotnetScope> |
@@ -30,6 +31,12 @@ Não é objetivo substituir gerenciadores de pacotes da distribuição nem o
 | D4 | Instalação global por arquivo, fora do gerenciador de pacotes | Sim, no roadmap (F7) |
 | D5 | Processo e hospedagem | GitHub, sem Spec Kit: Issue → fase deste plano → branch → PR |
 | D6 | Configuração de ambiente | `--configure-env` com padrão `true`; `false` só imprime instruções |
+
+As decisões acima registram a origem do plano, não uma aprovação automática de
+trabalho futuro. Contribuições seguem [CONTRIBUTING](../.github/CONTRIBUTING.md)
+e a [governança](../.github/GOVERNANCE.md). As tabelas de estratégias abaixo
+incorporam as decisões posteriores da F7c e F7d: `archive` global no Windows e
+macOS foi descartado, e o valor da opção para ambos os instaladores é `installer`.
 
 ## 3. Interface da CLI
 
@@ -66,7 +73,7 @@ dotnetscope --version | --help
 | `--env-conflict fail\|override\|skip` | `fail` | Política quando terceiros já definem valor diferente |
 | `--telemetry-optout` | `false` | Adiciona `DOTNET_CLI_TELEMETRY_OPTOUT=1` ao bloco gerenciado |
 | `--install-dir <dir>` | ver D3 e seção 5 | Raiz alternativa da instalação |
-| `--source auto\|archive\|apt\|installer\|pkg` | `auto` | Estratégia de instalação |
+| `--source auto\|archive\|apt\|installer` | `auto` | Estratégia de instalação; `installer` usa `.exe` no Windows e `.pkg` no macOS |
 | `--archive <arquivo> --sha512 <hash>` | — | Instalação offline com hash obrigatório |
 | `--install-deps` | `false` | Instala dependências nativas (somente `global` em Linux) |
 | `--allow-root` | `false` | Permite escopo `user` executando como root |
@@ -79,7 +86,7 @@ dotnetscope --version | --help
 
 Sem TTY e sem `--yes`, a CLI não pede confirmação: falha com código de uso.
 
-### 3.3 Códigos de saída (proposta)
+### 3.3 Códigos de saída
 
 | Código | Significado |
 | --- | --- |
@@ -110,10 +117,10 @@ Os códigos são contrato estável a partir da primeira release.
 | --- | --- | --- |
 | user Linux | `~/.config/dotnetscope/env.sh` + bloco que o carrega em `~/.profile` e `~/.bashrc`; `~/.zprofile`/`~/.zshrc` se zsh existir; `~/.config/fish/conf.d/dotnetscope.fish` se fish existir | só imprime instruções |
 | user macOS | `~/.config/dotnetscope/env.sh` + bloco em `~/.zprofile` (e bash/fish se presentes) | só imprime |
-| user Windows | `HKCU\Environment` (`REG_EXPAND_SZ`) + `WM_SETTINGCHANGE` | só imprime |
+| user Windows | `HKCU\Environment` + `WM_SETTINGCHANGE`; tipos por variável na [CLI](cli.md#windows) | só imprime |
 | global Linux | `/etc/profile.d/dotnetscope.sh`; instalação por arquivo também grava `/etc/dotnet/install_location_<arch>` | só imprime |
-| global macOS | `/etc/paths.d/dotnetscope` | só imprime |
-| global Windows | `HKLM\...\Session Manager\Environment` + `HKLM\SOFTWARE\dotnet\Setup\InstalledVersions\<arch>\InstallLocation` (instalação por arquivo) | só imprime |
+| global macOS | ambiente gerenciado pelo `.pkg` oficial, inclusive `/etc/paths.d` | a CLI não edita o ambiente; efeitos do instalador oficial permanecem |
+| global Windows | ambiente e registro gerenciados pelo instalador oficial `.exe` | a CLI não edita o ambiente; efeitos do instalador oficial permanecem |
 
 ### 4.3 Regras
 
@@ -150,9 +157,9 @@ Exemplo de bloco no Linux:
 
 | SO | `user` | `global` (`--source auto`) |
 | --- | --- | --- |
-| Linux | `archive` (`tar.gz`) em `~/.dotnet`, sem sudo | `apt` quando o canal/versão estiver disponível; senão `archive` em `/usr/local/share/dotnet` |
-| Windows | `archive` (zip) em `%LOCALAPPDATA%\Microsoft\dotnet` | `installer` oficial (`.exe`, `/install /quiet /norestart`) quando a versão existir; `archive` em `%ProgramFiles%\dotnet` somente se o destino não for gerenciado por instalador |
-| macOS | `archive` (`tar.gz`) em `~/.dotnet` | `pkg` oficial (`installer -pkg`); `archive` em `/usr/local/share/dotnet` somente se o destino não for gerenciado por `.pkg` |
+| Linux | `archive` (`tar.gz`) em `~/.dotnet`, sem sudo | `apt` quando o candidato for exatamente a versão resolvida; senão `archive` em `/usr/local/share/dotnet` |
+| Windows | `archive` (zip) em `%LOCALAPPDATA%\Microsoft\dotnet` | somente `installer` oficial (`.exe`, `/install /quiet /norestart`) |
+| macOS | `archive` (`tar.gz`) em `~/.dotnet` | somente `installer`, com `.pkg` oficial (`installer -pkg`) |
 
 Regras comuns:
 
@@ -161,7 +168,8 @@ Regras comuns:
 - Instalação global por arquivo (D4) é recusada se houver .NET global gerenciado
   por pacote (`dpkg -S`, `/usr/lib/dotnet`, MSI/`.pkg` registrados) no mesmo
   destino ou concorrendo pelo mesmo `dotnet` no `PATH`; a CLI orienta usar
-  `--source apt|installer|pkg` ou outro `--install-dir`.
+  `--source apt` ou outro `--install-dir` no Linux; Windows e macOS usam
+  exclusivamente o instalador oficial e não aceitam `--install-dir` global.
 - Coexistência no mesmo diretório (D3): versões existentes em `sdk/<v>` e
   `shared/<fw>/<v>` nunca são substituídas; `dotnet` e `host/fxr` só são
   atualizados se a versão nova for maior.
@@ -304,7 +312,8 @@ runners efêmeros.
 
 ## 14. Segurança
 
-- Nunca executar scripts baixados.
+- A CLI nunca executa scripts baixados; os scripts de bootstrap do próprio
+  DotnetScope são distribuídos separadamente conforme o [README](../README.md#instalação).
 - Integridade verificada antes de extrair ou executar.
 - Extração confinada ao destino normalizado.
 - Nada sobrescrito ou removido sem ação explícita.
@@ -338,11 +347,16 @@ runners efêmeros.
 
 Cada fase vira uma Issue (template `Tarefa técnica` ou `Propor funcionalidade`)
 com milestone, e é entregue por PR com as evidências do template.
+Esta é uma regra de processo, não evidência de rastreabilidade histórica:
+a [revisão de governança](../.github/GOVERNANCE.md#issues-decisões-e-versões)
+registrou a ausência dessas Issues e milestones em 2026-10-22.
 
 ### F9 sem custo (proposta)
 
 Aprovada pelo revisor humano em 2026-10-21: F9a, F9b, F9c e F9d. A verificação
 da assinatura `.p7s` do metadata não foi selecionada e continua em avaliação.
+O título preserva a origem da proposta; o estado de entrega é o da tabela de
+fases acima, não uma proposta ainda aguardando execução.
 
 Condição do revisor humano (2026-10-21): nenhum custo financeiro e nenhuma
 complexidade adicional desnecessária ao processo. A F9 original previa assinar os

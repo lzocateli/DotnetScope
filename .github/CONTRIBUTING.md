@@ -4,7 +4,9 @@
 
 1. Leia o [README](../README.md), o [plano de implementação](../docs/plano-implementacao.md) e os documentos da área afetada.
 2. Procure a Issue, a fase do plano e os ADRs relacionados.
-3. Confirme o escopo e a autorização da mudança antes de executar.
+3. Aguarde a confirmação de escopo do mantenedor na Issue antes de implementar.
+   Não é necessário conhecer a fase do plano para relatar um problema; o
+   mantenedor faz esse enquadramento na triagem.
 4. Nunca inclua secrets em nenhuma parte do código ou configuração, inclusive
    workflows, testes, documentação, exemplos, scripts e connection strings.
    Secrets locais permanecem exclusivamente no arquivo externo
@@ -26,16 +28,48 @@
 ## Licenciamento de contribuições
 
 O código é distribuído sob `MIT`; consulte o arquivo [LICENSE](../LICENSE).
+Ao enviar uma contribuição, você concorda com sua distribuição sob essa licença
+e confirma ter o direito de contribuir com o conteúdo. Não inclua código de
+terceiros sem licença compatível e atribuição quando exigida.
+
+Participe de acordo com o [código de conduta](CODE_OF_CONDUCT.md). Para dúvidas,
+consulte [SUPPORT](SUPPORT.md); vulnerabilidades seguem exclusivamente a
+[política de segurança](SECURITY.md).
 
 ## Fluxo
 
 O repositório não usa Spec Kit. O trabalho segue Issue → fase do plano → branch → PR.
 
-1. Abra ou referencie uma Issue que descreva o problema, o resultado esperado e a fase do plano.
-2. Crie uma branch `tipo/descricao-curta` a partir de `main`.
+1. Procure Issues e PRs existentes para evitar duplicação. Abra ou referencie
+   uma Issue com o problema e o resultado esperado; bugs, melhorias,
+   documentação e dúvidas têm [formulários próprios](https://github.com/lzocateli/DotnetScope/issues/new/choose).
+   O mantenedor confirma o escopo e relaciona a fase do plano quando aplicável.
+2. Faça um fork, clone seu fork e configure o repositório original como
+   `upstream`. Na raiz do clone:
+
+   ```bash
+   git remote add upstream https://github.com/lzocateli/DotnetScope.git
+   git fetch upstream
+   git switch -c docs/descricao-curta upstream/main
+   ```
+
+   Substitua `docs/descricao-curta` pelo tipo e nome da sua mudança. Os comandos
+   criam apenas uma branch local e não alteram a `main` remota.
 3. Atualize testes, referência da CLI e documentação necessários; valide o menor recorte primeiro e registre evidências no PR. A validação completa, igual à do CI, é `pwsh ./tools/scripts/Invoke-Validation.ps1 -Aot`.
 4. Testes que instalam .NET ou editam perfil, registro ou `PATH` rodam apenas em containers ou runners efêmeros, nunca no seu perfil.
-5. Use os [Conventional Commits](COMMIT_CONVENTIONS.md). Push, merge, publicação e deploy exigem autorização separada.
+5. Use os [Conventional Commits](COMMIT_CONVENTIONS.md). Envie a branch para
+   seu fork (`git push -u origin docs/descricao-curta`) e abra um PR com base
+   `lzocateli/DotnetScope:main`, preenchendo o template e vinculando a Issue
+   (`Closes #numero` quando aplicável). Use draft enquanto faltar evidência.
+6. Aguarde a revisão de `@lzocateli`. Responda aos comentários e atualize a
+   branch com a `main` quando necessário; alterações invalidam aprovações antigas.
+   Workflows de colaboradores externos aguardam autorização do mantenedor.
+   Somente ele faz merge, após os checks obrigatórios e a resolução das conversas.
+
+O envio da branch ao próprio fork faz parte do fluxo de contribuição. Agentes
+continuam precisando de solicitação explícita para commit, push, merge ou
+publicação. Acesso de escrita ao repositório original não é necessário nem
+concedido automaticamente; consulte a [governança](GOVERNANCE.md).
 
 ## Definition of Done
 
@@ -54,3 +88,10 @@ O repositório não usa Spec Kit. O trabalho segue Issue → fase do plano → b
 ## Pull requests
 
 Mantenha PRs coesos e pequenos o bastante para revisão responsável. Mudanças incompatíveis na CLI exigem issue, ADR quando aplicável, estratégia de migração e período de compatibilidade. Não misture refactor amplo com mudança funcional.
+
+Em mudanças apenas documentais, marque os gates de código não aplicáveis como
+`N/A`, com justificativa; confira links, exemplos e coerência com a CLI. Os
+checks automáticos obrigatórios continuam exigidos no GitHub.
+
+O mantenedor pode solicitar ajustes, adiar ou recusar propostas fora do escopo.
+Abertura de Issue ou PR não garante implementação, aceite ou prazo de resposta.

@@ -1,0 +1,36 @@
+name: Dúvida ou suporte
+description: Tire dúvidas sobre instalação, uso ou contribuição
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: "Consulte README, docs/cli.md e Issues existentes antes de enviar. Não publique secrets, perfis completos, dados pessoais ou vulnerabilidades; segurança usa o canal privado da aba Security."
+  - type: textarea
+    id: question
+    attributes:
+      label: Dúvida
+      description: Descreva o que deseja fazer e onde precisa de ajuda.
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: O que já consultou ou tentou
+      description: Inclua comandos e saída mínima sanitizada quando aplicável.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Plataforma e versões
+      placeholder: "Versão do DotnetScope, SO, arquitetura, shell e escopo; ou não aplicável"
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Segurança dos dados
+      options:
+        - label: Removi credenciais, chaves, dados pessoais e conteúdo sensível.
+          required: true
