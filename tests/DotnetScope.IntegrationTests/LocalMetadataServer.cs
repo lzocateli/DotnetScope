@@ -13,6 +13,8 @@ internal sealed class LocalMetadataServer : IDisposable
     private const string OfficialPrefix = "https://builds.dotnet.microsoft.com/dotnet/release-metadata/";
     private readonly HttpListener _listener;
     private readonly Task _loop;
+    private readonly TaskCompletionSource _acceptPending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _isStopping;
 
     public LocalMetadataServer()
     {
@@ -39,6 +41,8 @@ internal sealed class LocalMetadataServer : IDisposable
     }
 
     public Uri BaseUrl { get; }
+
+    public Task AcceptPending => _acceptPending.Task;
 
     public Uri IndexUrl => new(BaseUrl, "releases-index.json");
 
@@ -67,6 +71,8 @@ internal sealed class LocalMetadataServer : IDisposable
 
     public void Dispose()
     {
+        Interlocked.Exchange(ref _isStopping, 1);
+
         // No Linux, Close() após Stop() pode tentar reassociar a porta ao remover prefixos; Close() já encerra.
         try
         {
@@ -140,11 +146,13 @@ internal sealed class LocalMetadataServer : IDisposable
             HttpListenerContext context;
             try
             {
-                context = await _listener.GetContextAsync();
+                var pendingContext = _listener.GetContextAsync();
+                _acceptPending.TrySetResult();
+                context = await pendingContext;
             }
             // No Windows, GetContextAsync após Close() pode falhar com ArgumentException (handle inválido).
             catch (Exception exception) when (exception is HttpListenerException or ObjectDisposedException or InvalidOperationException
-                || (exception is ArgumentException && !_listener.IsListening))
+                || (exception is ArgumentException && Volatile.Read(ref _isStopping) != 0))
             {
                 return;
             }
