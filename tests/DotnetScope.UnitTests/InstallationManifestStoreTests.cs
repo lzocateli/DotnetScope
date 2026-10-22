@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DotnetScope.Core;
 using DotnetScope.Core.Installation;
 using DotnetScope.Core.Releases;
@@ -9,6 +10,7 @@ public sealed class InstallationManifestStoreTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "dotnetscope-tests", Guid.NewGuid().ToString("N"));
     private string ManifestPath => Path.Combine(_directory, "manifest.json");
+    private string RootPath => Path.Combine(_directory, "dotnet");
 
     public InstallationManifestStoreTests() => Directory.CreateDirectory(_directory);
 
@@ -41,11 +43,7 @@ public sealed class InstallationManifestStoreTests : IDisposable
     [Fact]
     public void Read_LegacyManifestWithoutDeclaredInvoker_RemainsCompatible()
     {
-        File.WriteAllText(
-            ManifestPath,
-            """
-            {"schemaVersion":1,"installations":[{"component":"sdk","version":"10.0.402","rid":"linux-x64","scope":"global","root":"/usr/local/share/dotnet","fileName":"sdk.tar.gz","url":"https://example.test/sdk.tar.gz","sha512":"","installedAt":"2026-10-22T00:00:00+00:00","paths":[],"addedPaths":[],"hostReplaced":false}]}
-            """);
+        File.WriteAllText(ManifestPath, CreateManifestJson());
 
         var stored = Assert.Single(new InstallationManifestStore(ManifestPath).Read());
 
@@ -56,14 +54,11 @@ public sealed class InstallationManifestStoreTests : IDisposable
     [Fact]
     public void Read_InvalidDeclaredInvoker_FailsWithoutRevealingItsValue()
     {
-        File.WriteAllText(
-            ManifestPath,
-            """
-            {"schemaVersion":1,"installations":[{"component":"sdk","version":"10.0.402","rid":"linux-x64","scope":"global","root":"/usr/local/share/dotnet","fileName":"sdk.tar.gz","url":"https://example.test/sdk.tar.gz","sha512":"","installedAt":"2026-10-22T00:00:00+00:00","paths":[],"addedPaths":[],"hostReplaced":false,"declaredInvoker":"alice\nsecret"}]}
-            """);
+        File.WriteAllText(ManifestPath, CreateManifestJson(declaredInvoker: "alice\nsecret"));
 
         var exception = Assert.Throws<DotnetScopeException>(() => new InstallationManifestStore(ManifestPath).Read());
 
+        Assert.Contains("campo de auditoria inválido", exception.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("alice", exception.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("secret", exception.Message, StringComparison.Ordinal);
     }
@@ -76,12 +71,23 @@ public sealed class InstallationManifestStoreTests : IDisposable
         }
     }
 
-    private static InstallationRecord CreateRecord(InstallScope scope) => new(
+    private string CreateManifestJson(string? declaredInvoker = null)
+    {
+        var declaredInvokerProperty = declaredInvoker is null
+            ? string.Empty
+            : $",\"declaredInvoker\":\"{JsonEncodedText.Encode(declaredInvoker)}\"";
+
+        return $$"""
+            {"schemaVersion":1,"installations":[{"component":"sdk","version":"10.0.402","rid":"linux-x64","scope":"global","root":"{{JsonEncodedText.Encode(RootPath)}}","fileName":"sdk.tar.gz","url":"https://example.test/sdk.tar.gz","sha512":"","installedAt":"2026-10-22T00:00:00+00:00","paths":[],"addedPaths":[],"hostReplaced":false{{declaredInvokerProperty}}}]}
+            """;
+    }
+
+    private InstallationRecord CreateRecord(InstallScope scope) => new(
         ComponentKind.Sdk,
         "10.0.402",
         "linux-x64",
         scope,
-        "/usr/local/share/dotnet",
+        RootPath,
         "sdk.tar.gz",
         new Uri("https://example.test/sdk.tar.gz"),
         string.Empty,
