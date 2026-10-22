@@ -3,7 +3,7 @@
 - **Slug**: windows-ci-manifest-paths
 - **Corrigido em**: 2026-10-22
 - **Avaliação**: ./assessment.md
-- **Estado**: partial
+- **Estado**: applied
 
 ## Resumo
 
@@ -33,7 +33,8 @@ As fixtures agora derivam `root` do diretório temporário dos testes, tornando 
 - `dotnet test tests/DotnetScope.UnitTests/DotnetScope.UnitTests.csproj --configuration Release` na mesma imagem → aprovado, 512 testes.
 - `git diff --check` → aprovado.
 - A primeira execução atualizada do job Windows confirmou a correção das fixtures de caminho, mas encontrou uma expectativa incorreta adicional no teste de `AddAsync`: o campo `declaredInvoker` é omitido no Windows por política. A asserção foi ajustada para validar esse comportamento.
-- A execução atualizada do job Windows, após esse ajuste, ainda está pendente.
+- Workflow `PR Validation`, execução `39845107025` → aprovado: build, testes e Native AOT em Linux x64, macOS arm64 e Windows x64.
+- No mesmo commit, Gitleaks passou e o check `Manifest and local install` passou; a submissão winget foi ignorada conforme a política do workflow.
 
 ## Desvios da Avaliação
 
@@ -41,5 +42,4 @@ O primeiro ajuste corrigiu os caminhos conforme a avaliação. A execução Wind
 
 ## Acompanhamento
 
-- Confirmar o job `Build, tests and Native AOT (win-x64)` no PR após publicar o ajuste por plataforma.
-- Se o runner Windows passar, atualizar o estado deste relatório para `applied`.
+- Nenhum acompanhamento adicional para este defeito; a correção foi confirmada na matriz de CI do PR.
