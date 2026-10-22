@@ -288,7 +288,7 @@ como requisito plenamente entregue.
 | R11 | Processos externos com caminho absoluto fixo (`/usr/bin/apt-get`, `/usr/bin/apt-cache`, `/usr/sbin/installer`, `/usr/sbin/pkgutil`, instalador no staging), `ArgumentList`, ambiente de R07 e timeout. Nomes e versões de pacote validados por expressão regular estrita antes do uso. | T10, T11 | Unitário: valores com espaço, `-o`, `;` ou `=` extra são recusados; integração: `PATH` com `apt-get` falso não é usado. |
 | R12 | A estratégia `apt` usa somente as fontes já configuradas; a CLI não adiciona repositórios nem chaves (D-F7-3). | T12 | Revisão de código e teste: nenhuma escrita em `/etc/apt`. |
 | R13 | Estado global (manifesto, journal, lock, backups) em `/var/lib/dotnetscope` e `%ProgramData%\dotnetscope`, com dono e permissões de R05. Estado com dono inesperado é recusado (código `6`), nunca usado. | T13, T18 | Integração: manifesto global pré-criado por outro usuário é recusado. |
-| R14 | O manifesto global registra data, estratégia, origem, hash e o usuário que elevou (`SUDO_USER` ou usuário do token), sem dados sensíveis. | T14 | Unitário do formato; E2E confere o registro. |
+| R14 | O manifesto de instalação global Linux/macOS registra `SUDO_USER` como `declaredInvoker`, somente quando presente e dentro do limite de formato. O valor é declaração não verificada do ambiente, não prova identidade nem autoriza ações. Não registra identidade do token Windows nem de instalações de usuário; não grava dados adicionais ou o valor em logs. Manifestos antigos continuam legíveis. | T14 | Unitário: escopo/plataforma, ausência, limite, controle de conteúdo, compatibilidade e redaction; integração/E2E em Linux elevado confere o campo. |
 | R15 | Manter as regras de log atuais e remover `userinfo` de URLs de proxy exibidas. | T15 | Unitário: proxy `http://usuario:senha@proxy` não aparece em `--verbose`. |
 | R16 | Instaladores com `/install /quiet /norestart` ou `installer -pkg -target /`, timeout e mapeamento de códigos (`3010`/`1641` → sucesso com aviso de reinicialização; `1618` → código `6`). | T16 | Unitário do mapeamento; E2E no Windows. |
 | R17 | Verificar a elevação antes de qualquer efeito (`geteuid() == 0`; token elevado e grupo Administradores no Windows). Sem elevação, código `7`. Nunca chamar `sudo`, `runas` ou ShellExecute com `runas`. | T17 | Unitário com serviço de elevação injetado; E2E sem elevação. |
@@ -300,6 +300,12 @@ Revisão de segurança independente (2026-10-21, F7a a F7d): nenhuma
 vulnerabilidade acima do limiar de relato. Dois endurecimentos sugeridos foram
 aplicados: o `doctor --scope global` executado como root valida as raízes mesmo
 sem `--repair`, e a validação do host no Windows também usa ambiente mínimo (R07).
+
+Decisão humana D5 registrada em 2026-10-22: somente o `SUDO_USER` limitado pode
+ser preservado como `declaredInvoker` em registros globais Linux/macOS. O campo
+descreve o ambiente, não autentica quem elevou e nunca participa da autorização.
+Root direto sem `SUDO_USER`, Windows elevado e instalações de usuário não
+recebem esse campo; dados ausentes em manifestos legados continuam nulos.
 
 ## 7. Decisões
 

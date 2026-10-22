@@ -100,9 +100,20 @@ seus próprios PRs não substituem a aprovação do Environment `release`; consu
 a [governança](../.github/GOVERNANCE.md). Não envie tags sem solicitação
 explícita do mantenedor.
 
+### Releases de segurança e suporte
+
+Versões pré-1.0 não têm suporte de segurança nem backports. A partir de
+`1.0.0`, somente a minor `1.x` mais recente é suportada; a publicação de uma
+minor nova encerra o suporte à anterior. O suporte da linha `1.x` termina com
+`2.0.0`. Não há SLA contratual. Correções são publicadas na linha suportada;
+consulte a [política de segurança](../.github/SECURITY.md#versões-suportadas).
+
 1. Ajuste `VersionPrefix` em `Directory.Build.props` por PR e aguarde os checks.
 2. Crie e envie a tag anotada `vX.Y.Z` (ou `vX.Y.Z-sufixo` para pre-release)
-   no commit de `main`:
+   no commit de `main`. O ruleset `release-tags-protected` restringe criação,
+   atualização e exclusão de tags `v*` ao papel de administrador; antes de
+   compilar, o workflow verifica com histórico completo que o commit da tag é
+   ancestral de `origin/main`:
 
    ```bash
    git tag -a v0.1.0 -m "DotnetScope 0.1.0"
@@ -119,8 +130,10 @@ explícita do mantenedor.
    `SHA256SUMS` com os instaladores, confere os 18 arquivos, gera a atestação
    de proveniência e cria a release com notas automáticas (categorias em
    [`release.yml`](../.github/release.yml)). Tags com sufixo viram pre-release
-   e não aparecem em `releases/latest`. Reexecutar o job substitui os assets da
-   release existente.
+   e não aparecem em `releases/latest`. Uma reexecução preserva assets com
+   SHA-256 idêntico, recusa divergências antes de enviar arquivos e envia
+   somente assets ausentes. Se houver falha parcial, outra execução completa
+   apenas o conjunto que falta, sem sobrescrita.
 6. No mesmo job (sem segunda aprovação) e somente sem sufixo,
    [`Update-HomebrewTap.ps1`](../tools/scripts/Update-HomebrewTap.ps1) gera a
    fórmula e envia o commit `dotnetscope X.Y.Z` ao tap. Não faz nada se a
@@ -132,8 +145,9 @@ explícita do mantenedor.
    gera o manifesto, executa `winget validate`, instala pelo manifesto local em
    `windows-2025`, confere `dotnetscope --version`, desinstala e, no Environment
    `winget`, submete o PR com `wingetcreate submit` (v1.12.13.0, SHA-256
-   fixado). Não submete se a versão já estiver no `winget-pkgs` ou houver PR
-   aberto para ela.
+   fixado). O Environment exige aprovação também no caminho automático e só
+   permite `main` e tags `v*`. Não submete se a versão já estiver no
+   `winget-pkgs` ou houver PR aberto para ela.
 
 `workflow_dispatch` e pull requests que alteram a cadeia de release executam
 tudo exceto `attest-sbom`, `publish`, `verify-homebrew` e `winget`.
@@ -148,9 +162,15 @@ release, sem submeter) e por `workflow_dispatch` a partir de `main`, com
 gh workflow run winget.yml -f version=0.4.0 -f submit=true
 ```
 
+No dispatch manual, `submit=true` é recusado fora de `main`; no fluxo
+automático, o workflow reutilizável recebe o contexto `push` do workflow
+chamador e só autoriza a tag `vX.Y.Z` correspondente.
+
 O secret `WINGET_CREATE_GITHUB_TOKEN` fica somente no Environment `winget`
-(implantação restrita a tags `v*` e ao ramo `main`, sem revisor: a aprovação
-humana já ocorre no `publish`). O `wingetcreate` aceita apenas PAT clássico com
+com `@lzocateli` como revisor obrigatório. `prevent_self_review` está
+desativado para permitir a aprovação consciente do único mantenedor quando ele
+inicia a execução; o GitHub também permite bypass administrativo, atualmente
+limitado ao mesmo mantenedor. O `wingetcreate` aceita apenas PAT clássico com
 escopo `public_repo` (tokens fine-grained não são suportados), que dá escrita a
 todos os repositórios públicos da conta; por isso use expiração curta e
 renove o secret ao expirar. O token é lido da variável de ambiente, nunca da
@@ -174,15 +194,9 @@ pwsh ./tools/scripts/Update-HomebrewTap.ps1 -Version 0.4.0 -ReleaseDirectory dis
 
 ## Limitações conhecidas
 
-- A reexecução do job `publish` usa `gh release upload --clobber`, substituindo
-  assets existentes. Portanto, a imutabilidade exigida pelas regras de CI ainda
-  não é imposta pelo workflow atual. Trate isso como manutenção pendente, não
-  como garantia implementada; não reexecute uma publicação para trocar
-  silenciosamente binários já distribuídos.
-- O caminho manual `winget.yml` com `submit=true` não depende de uma nova
-  aprovação do Environment `release`. O mantenedor deve autorizar
-  explicitamente esse dispatch e conferir a versão publicada; a aprovação do
-  fluxo automático não é uma aprovação técnica desse caminho manual.
-- A validação da tag confere formato e versão, mas não verifica sua
-  ancestralidade em `main`. O passo 2 é uma exigência operacional; sua imposição
-  automática e proteção de tags devem ser avaliadas em manutenção própria.
+- A configuração do GitHub permite bypass administrativo do Environment
+  `winget` (`can_admins_bypass=true`). O único administrador consultado é
+  `@lzocateli`; mudanças nesse grupo exigem revisão desta política.
+- Recusa de aprovação e submissão real ao `microsoft/winget-pkgs` não foram
+  exercitadas nesta remediação. A validação ficou limitada às regras consultadas
+  pela API e a fixtures sintéticas; nenhum PR de submissão foi aberto.

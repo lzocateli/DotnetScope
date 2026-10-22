@@ -32,7 +32,8 @@ public sealed record InstallationRecord(
     DateTimeOffset InstalledAt,
     IReadOnlyList<string> Paths,
     IReadOnlyList<string> AddedPaths,
-    bool HostReplaced);
+    bool HostReplaced,
+    string? DeclaredInvoker = null);
 
 /// <summary>Resultado da validação do host após a instalação.</summary>
 public sealed record HostValidation(bool Succeeded, string Detail);

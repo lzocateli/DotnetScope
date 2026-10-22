@@ -694,6 +694,12 @@ O manifesto registra componente, versão, RID, escopo, raiz, URL, SHA-512, data,
 pastas do arquivo (`paths`) e pastas criadas (`addedPaths`). É gravado com modo
 `0600`, de forma atômica e sob lock entre processos. Um manifesto corrompido
 nunca é sobrescrito: a instalação é desfeita e a CLI retorna código `1`.
+Em instalações globais no Linux/macOS, o campo opcional `declaredInvoker`
+registra o valor limitado de `SUDO_USER`, quando presente. Esse valor é uma
+declaração não verificada do ambiente: não prova identidade, não autoriza ações
+e não é registrado em logs. O campo é omitido em instalações de usuário,
+Windows, execuções sem `SUDO_USER` e valores inválidos. Manifestos anteriores,
+sem o campo, continuam legíveis.
 
 ## Cache do metadata
 

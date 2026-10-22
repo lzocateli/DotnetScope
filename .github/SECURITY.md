@@ -6,16 +6,22 @@
 
 ## Versões suportadas
 
-O DotnetScope possui releases públicas pré-1.0, incluindo a
-[v0.4.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.4.0).
-Ainda não há compromisso de suporte prolongado ou backport para linhas antigas.
+Versões pré-1.0, incluindo a
+[v0.4.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.4.0), não têm
+suporte de segurança nem backports. Atualize para a release mais recente; não
+há suporte retroativo implícito para versões já publicadas.
+
+A partir de `1.0.0`, somente a linha minor `1.x` mais recente é suportada.
+Correções de segurança são publicadas nessa linha; uma minor anterior deixa de
+ser suportada quando uma minor mais nova é publicada. O suporte da linha `1.x`
+termina com a publicação de `2.0.0`. Não há SLA contratual; os objetivos
+operacionais de resposta desta política continuam descritos em
+[Resposta esperada](#resposta-esperada).
+
 Ao relatar uma vulnerabilidade, informe todas as versões afetadas conhecidas e,
 quando seguro, se o problema ocorre na
 [release mais recente](https://github.com/lzocateli/DotnetScope/releases/latest).
-A ausência de uma janela de suporte não impede o envio do relato privado.
-
-Uma matriz de suporte com prazos por linha deverá ser definida antes da versão
-1.0; não interprete releases antigas como linhas mantidas automaticamente.
+O canal privado permanece disponível independentemente da versão afetada.
 
 ## Escopo
 

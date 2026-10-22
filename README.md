@@ -156,6 +156,11 @@ Contribuições por fork e pull request são bem-vindas. Comece por
 [bugs, melhorias ou dúvidas](https://github.com/lzocateli/DotnetScope/issues/new/choose)
 e aguarde o alinhamento de escopo antes de implementar.
 
+**Suporte de segurança:** versões pré-1.0 não têm suporte nem backports. A
+partir de 1.0.0, somente a minor 1.x mais recente é suportada, até a publicação
+de 2.0.0; minors anteriores deixam de ser suportadas quando uma minor nova é
+publicada. Consulte a [política completa](.github/SECURITY.md#versões-suportadas).
+
 - [Guia de contribuição](.github/CONTRIBUTING.md): preparação, fork, testes e PR.
 - [Governança](.github/GOVERNANCE.md): decisões e integração exclusivas de
   `@lzocateli`, proteção da `main` e procedimento para PRs do mantenedor.

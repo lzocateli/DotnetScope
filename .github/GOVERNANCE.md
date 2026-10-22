@@ -16,6 +16,7 @@ autorização humana nesta revisão de governança:
 | --- | --- | --- |
 | [`main-integrity`](https://github.com/lzocateli/DotnetScope/rules/25638208) | Exige PR, conversas resolvidas, branch atualizada e os quatro checks abaixo; bloqueia exclusão e force-push | Nenhuma, nem para o proprietário |
 | [`main-maintainer-only`](https://github.com/lzocateli/DotnetScope/rules/25638218) | Restringe atualizações e exige uma aprovação do code owner, descartada após novos commits | Papel de administrador, somente por PR |
+| [`release-tags-protected`](https://github.com/lzocateli/DotnetScope/rules/25666467) | Restringe criação, atualização e exclusão de `refs/tags/v*` | Papel de administrador, sempre |
 
 Checks exigidos da integração GitHub Actions, pelos nomes exatos dos jobs:
 
@@ -28,6 +29,22 @@ O [CODEOWNERS](CODEOWNERS) cobre todos os arquivos com `@lzocateli`. Ele
 sozinho não bloqueia merge: a imposição depende dos rulesets ativos no GitHub.
 Novos nomes de checks precisam ser atualizados nos rulesets junto com os
 workflows, para não bloquear PRs indefinidamente.
+
+### Tags de release e Environment winget
+
+O ruleset `release-tags-protected` aplica-se a todas as tags `v*`; o único
+bypass atual é o papel `RepositoryRole: Admin`, que pertence somente a
+`@lzocateli`. Não adicione outro administrador sem rever essa exceção. O
+workflow de release também verifica que a tag resolve para um commit ancestral
+de `origin/main`, com histórico completo, antes de compilar ou publicar.
+
+O Environment `winget` exige aprovação de `@lzocateli` tanto para submissões
+automáticas quanto manuais e só permite as referências `main` e `v*`. O
+`prevent_self_review` está desativado para permitir que o único mantenedor
+aprove conscientemente uma execução que ele próprio iniciou; o GitHub também
+permite bypass administrativo (`can_admins_bypass=true`), atualmente limitado
+ao mesmo mantenedor. PRs e validações sem `submit=true` não executam o job nem
+acessam `WINGET_CREATE_GITHUB_TOKEN`.
 
 ### PRs de terceiros
 
@@ -103,16 +120,22 @@ como proprietário, os comandos abaixo são somente leitura:
 gh api repos/lzocateli/DotnetScope/rulesets
 gh api repos/lzocateli/DotnetScope/rulesets/25638208
 gh api repos/lzocateli/DotnetScope/rulesets/25638218
+gh api repos/lzocateli/DotnetScope/rulesets/25666467
 gh api repos/lzocateli/DotnetScope/rules/branches/main
+gh api repos/lzocateli/DotnetScope/rules/tags/v0.0.0
+gh api repos/lzocateli/DotnetScope/environments/winget
+gh api repos/lzocateli/DotnetScope/environments/winget/deployment-branch-policies
 gh api repos/lzocateli/DotnetScope/collaborators
 gh api repos/lzocateli/DotnetScope/private-vulnerability-reporting
 gh api repos/lzocateli/DotnetScope/actions/permissions/fork-pr-contributor-approval
 ```
 
-Resultado esperado: ambos os rulesets ativos sobre `refs/heads/main`, primeiro
+Resultado esperado: os dois rulesets de branch ativos sobre `refs/heads/main`, primeiro
 sem bypass, segundo com bypass administrativo somente por PR, quatro checks
 vinculados ao GitHub Actions, apenas o proprietário como administrador,
-relatos privados habilitados e `all_external_contributors` para workflows.
+ruleset de tags `v*` ativo, Environment `winget` com aprovação do mantenedor e
+branches/tags `main`/`v*`, relatos privados habilitados e
+`all_external_contributors` para workflows.
 
 Se houver divergência, suspenda merges e publicações, remova acessos indevidos,
 restaure as regras em **Settings > Rules > Rulesets** e repita as consultas.
