@@ -51,7 +51,7 @@ a partir do `SHA256SUMS`; instala somente o binário (`.tar.gz` de
 `osx-arm64`, `osx-x64`, `linux-arm64` e `linux-x64`) e o `brew test` confere
 `--version`. Pre-releases não atualizam o tap.
 
-O manifesto winget (`lzocateli.DotnetScope`, schema 1.12.0) é gerado por
+O manifesto winget (`lzocateli.DotnetScope`, schema 1.10.0) é gerado por
 [`New-WingetManifest.ps1`](../tools/scripts/New-WingetManifest.ps1) a partir do
 `SHA256SUMS`: `.zip` de `win-x64` e `win-arm64` com `dotnetscope.exe` portátil
 (alias `dotnetscope`). O winget não altera `DOTNET_ROOT` nem perfis; isso

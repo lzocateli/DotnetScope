@@ -5,7 +5,7 @@ Gera o manifesto winget do dotnetscope a partir do SHA256SUMS de uma release.
 .DESCRIPTION
 Le os SHA-256 de dotnetscope-win-x64.zip e dotnetscope-win-arm64.zip no
 SHA256SUMS de -ReleaseDirectory e grava em -OutputDirectory o manifesto
-multiarquivo (schema 1.12.0) do pacote lzocateli.DotnetScope:
+multiarquivo (schema 1.10.0) do pacote lzocateli.DotnetScope:
 
   lzocateli.DotnetScope.yaml                (version)
   lzocateli.DotnetScope.installer.yaml      (zip com dotnetscope.exe portatil)
@@ -106,7 +106,7 @@ $installers = foreach ($architecture in 'x64', 'arm64') {
 
 $identifier = 'lzocateli.DotnetScope'
 $header = '# Gerado por tools/scripts/New-WingetManifest.ps1 a partir do SHA256SUMS da release.'
-$schema = 'https://aka.ms/winget-manifest.{0}.1.12.0.schema.json'
+$schema = 'https://aka.ms/winget-manifest.{0}.1.10.0.schema.json'
 
 $files = [ordered]@{
     "$identifier.yaml" = @"
@@ -117,7 +117,7 @@ PackageIdentifier: $identifier
 PackageVersion: $Version
 DefaultLocale: en-US
 ManifestType: version
-ManifestVersion: 1.12.0
+ManifestVersion: 1.10.0
 "@
     "$identifier.installer.yaml" = @"
 $header
@@ -136,7 +136,7 @@ ReleaseDate: $ReleaseDate
 Installers:
 $($installers -join "`n")
 ManifestType: installer
-ManifestVersion: 1.12.0
+ManifestVersion: 1.10.0
 "@
     "$identifier.locale.en-US.yaml" = @"
 $header
@@ -164,7 +164,7 @@ Tags:
 - version-manager
 ReleaseNotesUrl: https://github.com/lzocateli/DotnetScope/releases/tag/v$Version
 ManifestType: defaultLocale
-ManifestVersion: 1.12.0
+ManifestVersion: 1.10.0
 "@
 }
 
