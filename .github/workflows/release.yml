@@ -3,7 +3,8 @@ name: Release
 # Publica o dotnetscope em Native AOT para todos os RIDs suportados.
 # - Tag vX.Y.Z[-sufixo] (igual a VersionPrefix): build, smoke, testes dos instaladores e
 #   publicação da release no GitHub após aprovação no Environment `release`. Sem sufixo,
-#   atualiza também a fórmula do tap Homebrew (lzocateli/homebrew-tap) no mesmo job.
+#   atualiza também a fórmula do tap Homebrew (lzocateli/homebrew-tap) no mesmo job e
+#   submete o manifesto winget (winget.yml, Environment `winget`).
 # - workflow_dispatch e pull requests que alteram a cadeia de release: build, smoke e
 #   testes dos instaladores, sem publicar.
 on:
@@ -330,3 +331,14 @@ jobs:
             *) echo "::error::Versao instalada pelo tap '$actual' difere de ${TAG#v}."; exit 1 ;;
           esac
           brew test lzocateli/tap/dotnetscope
+
+  winget:
+    name: Winget
+    needs: [validate, publish]
+    if: ${{ needs.validate.outputs.version-suffix == '' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/winget.yml
+    with:
+      version: ${{ github.ref_name }}
+      submit: true

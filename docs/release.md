@@ -43,12 +43,19 @@ gh attestation verify dotnetscope-linux-x64.tar.gz --repo lzocateli/DotnetScope 
 | Instaladores | `install.sh` / `install.ps1` (ver [README](../README.md#instalação)) | `releases/latest` |
 | `.deb` (asset, sem repositório APT) | `sudo apt install ./dotnetscope-linux-x64.deb` | manual, baixando a nova release |
 | Homebrew (macOS e Linux) | `brew install lzocateli/tap/dotnetscope` | `brew upgrade`; fórmula atualizada pelo `release.yml` |
+| winget (Windows) | `winget install lzocateli.DotnetScope` | `winget upgrade`; PR ao `microsoft/winget-pkgs` aberto pelo `release.yml`, publicado após a moderação da Microsoft |
 
 A fórmula vive em [`lzocateli/homebrew-tap`](https://github.com/lzocateli/homebrew-tap)
 e é gerada por [`New-HomebrewFormula.ps1`](../tools/scripts/New-HomebrewFormula.ps1)
 a partir do `SHA256SUMS`; instala somente o binário (`.tar.gz` de
 `osx-arm64`, `osx-x64`, `linux-arm64` e `linux-x64`) e o `brew test` confere
 `--version`. Pre-releases não atualizam o tap.
+
+O manifesto winget (`lzocateli.DotnetScope`, schema 1.12.0) é gerado por
+[`New-WingetManifest.ps1`](../tools/scripts/New-WingetManifest.ps1) a partir do
+`SHA256SUMS`: `.zip` de `win-x64` e `win-arm64` com `dotnetscope.exe` portátil
+(alias `dotnetscope`). O winget não altera `DOTNET_ROOT` nem perfis; isso
+continua sendo feito pelo próprio `dotnetscope`. Pre-releases não vão ao winget.
 
 ## Build por RID
 
@@ -116,9 +123,34 @@ Windows PowerShell 5.1 e PowerShell 7, por `-File` e como scriptblock.
    (correção de uma linha antiga), mantém o tap e registra um aviso.
 7. Quando o tap ficou na versão da tag, `verify-homebrew` instala pelo tap em
    `macos-15` e confere a versão e o `brew test`.
+8. Sem sufixo, o job `winget` chama [`winget.yml`](../.github/workflows/winget.yml):
+   gera o manifesto, executa `winget validate`, instala pelo manifesto local em
+   `windows-2025`, confere `dotnetscope --version`, desinstala e, no Environment
+   `winget`, submete o PR com `wingetcreate submit` (v1.12.13.0, SHA-256
+   fixado). Não submete se a versão já estiver no `winget-pkgs` ou houver PR
+   aberto para ela.
 
 `workflow_dispatch` e pull requests que alteram a cadeia de release executam
-tudo exceto `attest-sbom`, `publish` e `verify-homebrew`.
+tudo exceto `attest-sbom`, `publish`, `verify-homebrew` e `winget`.
+
+### Winget
+
+O `winget.yml` também roda em pull requests que o alteram (valida com a última
+release, sem submeter) e por `workflow_dispatch` a partir de `main`, com
+`version` e `submit`, para a primeira submissão ou para reenviar após falha:
+
+```bash
+gh workflow run winget.yml -f version=0.4.0 -f submit=true
+```
+
+O secret `WINGET_CREATE_GITHUB_TOKEN` fica somente no Environment `winget`
+(implantação restrita a tags `v*` e ao ramo `main`, sem revisor: a aprovação
+humana já ocorre no `publish`). O `wingetcreate` aceita apenas PAT clássico com
+escopo `public_repo` (tokens fine-grained não são suportados), que dá escrita a
+todos os repositórios públicos da conta; por isso use expiração curta e
+renove o secret ao expirar. O token é lido da variável de ambiente, nunca da
+linha de comando. Cada PR passa pela validação automática e pela moderação do
+`microsoft/winget-pkgs`; a versão fica disponível no `winget` após o merge.
 
 ### Token do tap Homebrew
 

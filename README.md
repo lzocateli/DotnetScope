@@ -44,6 +44,9 @@ também o SBOM SPDX (`dotnetscope-<rid>.spdx.json`), atestado
 # Homebrew (macOS e Linux)
 brew install lzocateli/tap/dotnetscope
 
+# winget (Windows), após a moderação da versão no microsoft/winget-pkgs
+winget install lzocateli.DotnetScope
+
 # Debian/Ubuntu (amd64 ou arm64), a partir do asset da release
 curl -fsSLO https://github.com/lzocateli/DotnetScope/releases/latest/download/dotnetscope-linux-x64.deb
 sudo apt install ./dotnetscope-linux-x64.deb

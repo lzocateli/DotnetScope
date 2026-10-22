@@ -372,6 +372,11 @@ Decisões de implementação da F9 (IA assistida; revisor humano: lzocateli):
   aviso. A criação da release também é idempotente em reexecuções.
 - D-F9-5: as atestações de SBOM são geradas antes da aprovação do `publish`,
   para que nenhuma release fique pública sem elas, mesmo se o passo do tap falhar.
+- D-F9-6: o winget usa PAT clássico `public_repo` (único suportado pelo
+  `wingetcreate`), isolado no Environment `winget` (tags `v*` e `main`, sem
+  revisor, pois depende do `publish` aprovado). O manifesto é gerado pelo
+  repositório e validado com `winget validate` e instalação real antes do
+  `wingetcreate submit`; a submissão é idempotente (versão publicada ou PR aberto).
 
 Fora da F9, por exigirem custo: assinatura Authenticode e Developer ID dos
 binários do DotnetScope e notarização da Apple. Consequências documentadas:

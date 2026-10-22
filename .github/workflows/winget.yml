@@ -1,0 +1,182 @@
+name: Winget
+
+# Gera, valida e (opcionalmente) submete o manifesto winget lzocateli.DotnetScope.
+# - workflow_call (release.yml, tags sem sufixo): valida e submete a versao publicada.
+# - workflow_dispatch: valida a versao informada; submit=true envia o PR (ex.: primeira
+#   submissao ou reenvio apos falha), a partir de main.
+# - pull_request que altera a cadeia do winget: valida com a ultima release, sem submeter.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Versao publicada (X.Y.Z ou vX.Y.Z)"
+        type: string
+        required: true
+      submit:
+        description: "Envia o PR ao microsoft/winget-pkgs"
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versao publicada (X.Y.Z ou vX.Y.Z)"
+        type: string
+        required: true
+      submit:
+        description: "Envia o PR ao microsoft/winget-pkgs"
+        type: boolean
+        default: false
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/winget.yml"
+      - "tools/scripts/New-WingetManifest.ps1"
+
+permissions: {}
+
+jobs:
+  manifest:
+    name: Manifest and local install
+    runs-on: windows-2025
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          $tag = if ($env:INPUT_VERSION) { $env:INPUT_VERSION } else {
+            gh release view --repo $env:GITHUB_REPOSITORY --json tagName --jq .tagName
+          }
+          $version = $tag -replace '^v', ''
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+            Write-Output "::error::Versao '$tag' invalida: o winget recebe somente releases X.Y.Z sem sufixo."
+            exit 1
+          }
+          $published = gh release view "v$version" --repo $env:GITHUB_REPOSITORY --json publishedAt --jq .publishedAt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release download "v$version" --repo $env:GITHUB_REPOSITORY --pattern SHA256SUMS --dir release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $date = ([DateTimeOffset]::Parse($published, [Globalization.CultureInfo]::InvariantCulture)).UtcDateTime.ToString('yyyy-MM-dd')
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "date=$date" >> $env:GITHUB_OUTPUT
+          Write-Output "Versao $version publicada em $date"
+
+      - name: Generate manifest
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_DATE: ${{ steps.version.outputs.date }}
+        run: |
+          ./tools/scripts/New-WingetManifest.ps1 -Version $env:VERSION -ReleaseDirectory release -OutputDirectory winget -ReleaseDate $env:RELEASE_DATE
+          exit $LASTEXITCODE
+
+      - name: Validate and install with winget
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if ($null -eq (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Write-Output '::error::winget nao encontrado no runner.'
+            exit 1
+          }
+          winget --version
+          winget validate --manifest winget
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          winget settings --enable LocalManifestFiles
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          winget install --manifest winget --accept-package-agreements --accept-source-agreements --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $links = @(
+            (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\dotnetscope.exe'),
+            (Join-Path $env:ProgramFiles 'WinGet\Links\dotnetscope.exe')
+          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $links) {
+            Write-Output '::error::Alias dotnetscope.exe nao criado pelo winget.'
+            exit 1
+          }
+          $actual = & $links --version
+          if ($actual -notmatch "^$([regex]::Escape($env:VERSION))(\+|$)") {
+            Write-Output "::error::Versao instalada '$actual' difere de $($env:VERSION)."
+            exit 1
+          }
+          Write-Output "ok: $actual ($links)"
+          winget uninstall --manifest winget --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Test-Path -LiteralPath $links) {
+            Write-Output '::error::Alias permaneceu apos winget uninstall.'
+            exit 1
+          }
+
+      - name: Upload manifest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: winget-manifest
+          path: winget/*.yaml
+          if-no-files-found: error
+          retention-days: 7
+
+  submit:
+    name: Submit to microsoft/winget-pkgs
+    needs: manifest
+    if: ${{ inputs.submit }}
+    runs-on: windows-2025
+    timeout-minutes: 15
+    environment: winget
+    permissions:
+      contents: read
+    steps:
+      - name: Download manifest
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: winget-manifest
+          path: winget
+
+      - name: Submit with wingetcreate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.manifest.outputs.version }}
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
+        run: |
+          if (-not $env:WINGET_CREATE_GITHUB_TOKEN) {
+            Write-Output '::error::Secret WINGET_CREATE_GITHUB_TOKEN ausente no Environment winget.'
+            exit 1
+          }
+          $package = 'manifests/l/lzocateli/DotnetScope'
+          gh api "repos/microsoft/winget-pkgs/contents/$package/$($env:VERSION)" --silent 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Output "Versao $($env:VERSION) ja publicada no winget-pkgs; nada a fazer."
+            exit 0
+          }
+          $open = gh pr list --repo microsoft/winget-pkgs --state open --author lzocateli --search "lzocateli.DotnetScope $($env:VERSION) in:title" --json url --jq '.[].url'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($open) {
+            Write-Output "PR ja aberto para $($env:VERSION): $open"
+            exit 0
+          }
+          gh api "repos/microsoft/winget-pkgs/contents/$package" --silent 2>$null
+          $kind = if ($LASTEXITCODE -eq 0) { 'New version' } else { 'New package' }
+
+          # wingetcreate fixado por versao e SHA-256 (MIT, microsoft/winget-create).
+          $url = 'https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe'
+          $sha256 = '24042BD37915805615E6CF969AC57C6439124C3FE85823327F5F3FB24BD9FFEA'
+          Invoke-WebRequest -Uri $url -OutFile wingetcreate.exe
+          if ((Get-FileHash -LiteralPath wingetcreate.exe -Algorithm SHA256).Hash -ne $sha256) {
+            Write-Output '::error::SHA-256 do wingetcreate.exe diverge do valor fixado.'
+            exit 1
+          }
+          ./wingetcreate.exe submit --no-open --prtitle "${kind}: lzocateli.DotnetScope version $($env:VERSION)" winget
+          exit $LASTEXITCODE
