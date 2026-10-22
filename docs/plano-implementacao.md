@@ -334,7 +334,7 @@ runners efêmeros.
 | F7c | Global Windows: instalador `.exe` com Authenticode (sem `archive`, decisão de 2026-10-21) | R01–R04, R16, R17, R18 | concluída (testes nativos e E2E global em `windows-2025`) |
 | F7d | Global macOS: `.pkg` com assinatura (sem `archive`, decisão de 2026-10-21) | R01–R03, R16, R17 | concluída (E2E global em `macos-15`, com raiz confiável e não confiável) |
 | F8 | macOS user | E2E em runner macOS | concluída (testes nativos e E2E user em `macos-15`: zsh, bash sem perfil próprio e bash com `~/.bash_profile`) |
-| F9 | Distribuição sem custo: SBOM atestado, `.deb`, Homebrew e winget (ver [F9 sem custo](#f9-sem-custo-proposta)) | artefatos verificáveis por `gh attestation verify`; canais instalam a release | em andamento: F9a a F9c implementadas e validadas localmente (smoke do SBOM, `.deb` em Ubuntu 18.04 e Debian 12, `brew install`/`test`/`audit --strict` em container); validação no CI e F9d pendentes |
+| F9 | Distribuição sem custo: SBOM atestado, `.deb`, Homebrew e winget (ver [F9 sem custo](#f9-sem-custo-proposta)) | artefatos verificáveis por `gh attestation verify`; canais instalam a release | em andamento: F9a a F9c concluídas na v0.4.0 (SBOM atestado de `.tar.gz`/`.zip`/`.deb`, `.deb` em Ubuntu 18.04 e Debian 12, tap atualizado pelo `release.yml` e `brew install` verificado em `macos-15`); F9d pendente |
 
 Cada fase vira uma Issue (template `Tarefa técnica` ou `Propor funcionalidade`)
 com milestone, e é entregue por PR com as evidências do template.
