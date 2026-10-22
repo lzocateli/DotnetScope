@@ -113,7 +113,7 @@ jobs:
             exit 1
           }
           Write-Output "ok: $actual ($links)"
-          winget uninstall --manifest winget --disable-interactivity
+          winget uninstall --manifest winget --accept-source-agreements --disable-interactivity
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (Test-Path -LiteralPath $links) {
             Write-Output '::error::Alias permaneceu apos winget uninstall.'
