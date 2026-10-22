@@ -1,7 +1,7 @@
 name: Spike ou decisão arquitetural
 description: Registre uma investigação ou decisão que pode exigir ADR
 title: "[Spike]: "
-labels: ["type:spike", "status:triage"]
+labels: ["question"]
 body:
   - type: markdown
     attributes:

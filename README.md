@@ -4,14 +4,14 @@ CLI Native AOT (`dotnetscope`) para instalar, listar, validar e remover SDKs e
 runtimes .NET nos escopos `user` e `global`, com verificação de integridade,
 extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuário.
 
-> **Estado:** em desenvolvimento (fase F7). Release atual:
-> [v0.3.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.3.0).
+> **Estado:** em desenvolvimento, pré-1.0; fases F0 a F9 entregues.
+> Release atual: [v0.4.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.4.0).
 > Implementado em Linux, Windows e macOS, nos escopos user e global:
 > `list --available|--installed`,
 > `install` (inclusive `--archive` e `--from-global-json`), `uninstall`, `env` e
-> `doctor` ([referência da CLI](docs/cli.md)). O restante
-> descrito abaixo é planejado; consulte o
-> [plano de implementação](docs/plano-implementacao.md) para fases e decisões.
+> `doctor` ([referência da CLI](docs/cli.md)). Consulte o
+> [plano de implementação](docs/plano-implementacao.md) para evidências,
+> decisões históricas e questões ainda em aberto.
 
 ## Instalação
 
@@ -103,8 +103,11 @@ dotnetscope install runtime 9.0 --scope global --yes   # terminal elevado: insta
 
 `--configure-env` tem padrão `true`: a CLI grava um bloco gerenciado
 (`# >>> dotnetscope >>>`) nos perfis do shell ou no registro do Windows. Com
-`false`, nenhum arquivo, chave de registro ou variável persistente é alterado.
-Blocos e instalações de terceiros nunca são sobrescritos.
+`false`, a CLI não altera perfis nem variáveis persistentes; a instalação
+continua gravando seus próprios arquivos. No escopo global por pacote ou
+instalador oficial, o ambiente é responsabilidade desse mecanismo, não do bloco
+gerenciado. Blocos e instalações de terceiros são preservados conforme as
+regras de coexistência da [CLI](docs/cli.md).
 
 ## Desenvolvimento
 
@@ -126,7 +129,7 @@ Blocos e instalações de terceiros nunca são sobrescritos.
 - Pacotes de release (Native AOT por RID, `SHA256SUMS`) e testes dos
   instaladores: veja o [processo de release](docs/release.md).
 
-- No Windows e no macOS, build, testes e AOT rodam no host com o SDK do
+- No Windows e no macOS, build, testes e AOT rodam em runners de CI com o SDK do
   `global.json` (`-Native`; não executa `dotnet format`). O E2E do Windows altera
   o registro e só roda em runner efêmero do GitHub
   (`tools/scripts/Invoke-WindowsE2E.ps1`):
@@ -146,6 +149,22 @@ Blocos e instalações de terceiros nunca são sobrescritos.
 - Leia [CONTRIBUTING](.github/CONTRIBUTING.md), a
   [convenção de commits](.github/COMMIT_CONVENTIONS.md) e a
   [política de segurança](.github/SECURITY.md).
+
+## Comunidade e contribuições
+
+Contribuições por fork e pull request são bem-vindas. Comece por
+[bugs, melhorias ou dúvidas](https://github.com/lzocateli/DotnetScope/issues/new/choose)
+e aguarde o alinhamento de escopo antes de implementar.
+
+- [Guia de contribuição](.github/CONTRIBUTING.md): preparação, fork, testes e PR.
+- [Governança](.github/GOVERNANCE.md): decisões e integração exclusivas de
+  `@lzocateli`, proteção da `main` e procedimento para PRs do mantenedor.
+- [Suporte](.github/SUPPORT.md) e [código de conduta](.github/CODE_OF_CONDUCT.md).
+- [Relatos privados de vulnerabilidade](.github/SECURITY.md).
+- [Histórico de versões](https://github.com/lzocateli/DotnetScope/releases):
+  notas de release geradas a partir dos PRs.
+- [Plano de remediação pós-F9](docs/plano-remediacao-governanca.md):
+  pendências verificadas, critérios de aceite e Issues de acompanhamento.
 
 A infraestrutura de `.github/` e `.githooks/` foi gerada pelo Altivy.Groundwork
 (componentes `core` e `secret-scanning`) e adaptada a este projeto;

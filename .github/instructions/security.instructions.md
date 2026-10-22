@@ -15,9 +15,9 @@ applyTo: "src/**, tools/**, .github/workflows/**"
 - `--install-dir` é normalizado, absoluto e validado contra diretórios do sistema, raiz e diretórios de outros usuários.
 - Comandos externos usam caminho absoluto, `ArgumentList`, ambiente mínimo e timeout; nada de interpolação em shell.
 - Conteúdo escrito em perfis e registro é escapado para o destino; trate caminhos com caracteres especiais como dados, nunca como código.
-- Estado, manifesto, lock e backups ficam em diretórios do usuário com permissões restritas.
+- Estado, manifesto, lock e backups ficam em diretórios com permissões restritas: do usuário no escopo `user`, do sistema e separados dos dados do usuário no escopo `global`, conforme a [CLI](../../docs/cli.md).
 - Logs e `--output json` não incluem variáveis de ambiente completas, conteúdo de perfis, tokens ou URLs com credenciais.
-- Releases do DotnetScope publicam `SHA256SUMS`, assinatura, SBOM e atestação de proveniência; os instaladores `install.sh`/`install.ps1` verificam o checksum e não se autoelevam.
+- Releases do DotnetScope publicam `SHA256SUMS`, SBOM e atestações Sigstore keyless de proveniência e SBOM; não há Authenticode ou Developer ID dos binários próprios na F9 sem custo. Os instaladores `install.sh`/`install.ps1` verificam o checksum e não se autoelevam.
 - Dependências exigem licença permissiva compatível com MIT, versão fixada, manutenção verificada, compatibilidade AOT e verificação de vulnerabilidades.
 - Nova fronteira de privilégio, nova fonte de download ou novo arquivo de sistema alterado exige threat model e testes negativos.
 - Achado crítico ou alto bloqueia release sem aceitação formal de risco.

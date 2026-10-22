@@ -95,6 +95,11 @@ Windows PowerShell 5.1 e PowerShell 7, por `-File` e como scriptblock.
 
 ## Publicação
 
+Somente o mantenedor publica versões. A aprovação de um PR e a exceção para
+seus próprios PRs não substituem a aprovação do Environment `release`; consulte
+a [governança](../.github/GOVERNANCE.md). Não envie tags sem solicitação
+explícita do mantenedor.
+
 1. Ajuste `VersionPrefix` em `Directory.Build.props` por PR e aguarde os checks.
 2. Crie e envie a tag anotada `vX.Y.Z` (ou `vX.Y.Z-sufixo` para pre-release)
    no commit de `main`:
@@ -166,3 +171,18 @@ Para testar localmente sem publicar (commit só no clone temporário):
 ```bash
 pwsh ./tools/scripts/Update-HomebrewTap.ps1 -Version 0.4.0 -ReleaseDirectory dist
 ```
+
+## Limitações conhecidas
+
+- A reexecução do job `publish` usa `gh release upload --clobber`, substituindo
+  assets existentes. Portanto, a imutabilidade exigida pelas regras de CI ainda
+  não é imposta pelo workflow atual. Trate isso como manutenção pendente, não
+  como garantia implementada; não reexecute uma publicação para trocar
+  silenciosamente binários já distribuídos.
+- O caminho manual `winget.yml` com `submit=true` não depende de uma nova
+  aprovação do Environment `release`. O mantenedor deve autorizar
+  explicitamente esse dispatch e conferir a versão publicada; a aprovação do
+  fluxo automático não é uma aprovação técnica desse caminho manual.
+- A validação da tag confere formato e versão, mas não verifica sua
+  ancestralidade em `main`. O passo 2 é uma exigência operacional; sua imposição
+  automática e proteção de tags devem ser avaliadas em manutenção própria.

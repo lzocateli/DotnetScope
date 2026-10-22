@@ -1,13 +1,21 @@
 # Política de segurança
 
-> **Canal em preparação:** o GitHub Private Vulnerability Reporting deve ser
-> habilitado antes da primeira divulgação pública. Até sua confirmação, não
-> publique detalhes técnicos de vulnerabilidades em issues ou discussões.
+> **Canal privado habilitado:** GitHub Private Vulnerability Reporting,
+> confirmado pela API em 2026-10-22. Não publique detalhes técnicos de
+> vulnerabilidades em Issues ou discussões.
 
 ## Versões suportadas
 
-O DotnetScope ainda não possui release suportada. Antes da primeira versão pública,
-esta seção será substituída por uma matriz de versões e datas de fim de suporte.
+O DotnetScope possui releases públicas pré-1.0, incluindo a
+[v0.4.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.4.0).
+Ainda não há compromisso de suporte prolongado ou backport para linhas antigas.
+Ao relatar uma vulnerabilidade, informe todas as versões afetadas conhecidas e,
+quando seguro, se o problema ocorre na
+[release mais recente](https://github.com/lzocateli/DotnetScope/releases/latest).
+A ausência de uma janela de suporte não impede o envio do relato privado.
+
+Uma matriz de suporte com prazos por linha deverá ser definida antes da versão
+1.0; não interprete releases antigas como linhas mantidas automaticamente.
 
 ## Escopo
 

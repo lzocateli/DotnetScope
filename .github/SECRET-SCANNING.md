@@ -26,7 +26,10 @@ certificados privados e valores que apenas “parecem” credenciais.
 Workflows usam secrets de um Environment do GitHub, nunca valores literais no
 YAML. Registre aqui os secrets que cada Environment exige, por nome, sem valor.
 
-Crie-os em **Settings > Environments > ci > Environment secrets**. O valor é
+Crie-os em **Settings > Environments > ambiente correspondente > Environment secrets**:
+`HOMEBREW_TAP_TOKEN` em `release` e `WINGET_CREATE_GITHUB_TOKEN` em `winget`,
+conforme o [processo de release](../docs/release.md). A validação de PR não
+exige Environment `ci` nem secrets de publicação. O valor é
 digitado diretamente no GitHub e não deve ser copiado para o repositório, logs,
 issues, pull requests ou mensagens. Pull requests usam apenas valores efêmeros
 não secretos, pois secrets de ambientes protegidos não são disponibilizados a
@@ -75,9 +78,15 @@ arquivo no commit atual não elimina um secret já presente no histórico.
 
 ## Checklist administrativo
 
-- [ ] Exigir `Gitleaks / Full History` nos rulesets de `main` e `development`.
-- [ ] Habilitar secret scanning e push protection nativos do GitHub quando disponíveis.
+- [x] Exigir o check `Full History` do workflow `Gitleaks` no ruleset de
+  `main` (confirmado pela API em 2026-10-22; ver [governança](GOVERNANCE.md)).
+- [x] Habilitar secret scanning e push protection nativos do GitHub
+  (ambos confirmados pela API em 2026-10-22).
 - [ ] Confirmar `core.hooksPath=.githooks` nos clones administrativos.
 - [ ] Revisar e registrar qualquer exceção antes de alterar a configuração do scanner.
+
+O workflow também observa `development`, mas isso não cria nem protege a
+branch automaticamente. Se ela passar a ser usada como branch de integração,
+configure sua proteção explicitamente antes de aceitar contribuições nela.
 
 As proteções nativas do GitHub complementam e não substituem o hook e o workflow.

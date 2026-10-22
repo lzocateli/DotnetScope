@@ -12,6 +12,7 @@ literais exigidos pelas ferramentas.
 - Build, testes e publicação AOT executam em containers ou runners de CI; comandos Docker/Podman no host apenas os orquestram.
 - Testes que instalam .NET, editam perfil de shell, registro ou `PATH` executam somente em containers descartáveis ou runners efêmeros, nunca no perfil do desenvolvedor.
 - O repositório não usa Spec Kit. O trabalho segue Issue → fase do plano → branch → PR com evidências; ADRs registram decisões duradouras.
+- Contribuições públicas e autoridade exclusiva do mantenedor seguem [CONTRIBUTING](CONTRIBUTING.md) e [GOVERNANCE](GOVERNANCE.md); exceção de revisão não dispensa CI nem autoriza push direto na `main`.
 
 ## Fluxo de trabalho
 
@@ -38,7 +39,7 @@ literais exigidos pelas ferramentas.
 ## Regras invariáveis do produto
 
 - Nada é sobrescrito ou removido silenciosamente: instalações existentes (`sdk/<versão>`, `shared/<framework>/<versão>`), arquivos de perfil e chaves de registro alheios são preservados.
-- `--configure-env` tem padrão `true`; com `false`, nenhum arquivo de perfil, registro ou variável persistente é alterado, e a CLI apenas imprime as instruções.
+- `--configure-env` tem padrão `true`; com `false`, a CLI não edita perfis, registro ou variáveis persistentes e imprime instruções. A instalação ainda grava seus próprios arquivos; o ambiente de pacotes e instaladores oficiais globais é responsabilidade desses mecanismos.
 - Alterações de ambiente ficam somente entre os marcadores `# >>> dotnetscope >>>` e `# <<< dotnetscope <<<`, são idempotentes, precedidas de backup e gravadas atomicamente.
 - Blocos de terceiros (Ansible, `dotnet-install`, pacotes da distribuição) nunca são editados. Conflito de `DOTNET_ROOT` ou `PATH` exige decisão explícita (`--env-conflict`).
 - Todo artefato baixado é verificado por SHA-512 contra o metadata oficial antes de extração ou execução; hosts de download seguem allowlist.

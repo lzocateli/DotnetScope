@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Guia de contribuição e suporte
+    url: https://github.com/lzocateli/DotnetScope/blob/main/.github/SUPPORT.md
+    about: Consulte os canais de bugs, melhorias, dúvidas e contribuições.
   - name: Reportar vulnerabilidade
     url: https://github.com/lzocateli/DotnetScope/security/advisories/new
     about: Não publique vulnerabilidades em Issues; use um Security Advisory privado.
