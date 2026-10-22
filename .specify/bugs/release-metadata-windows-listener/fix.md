@@ -3,7 +3,7 @@
 - **Slug**: release-metadata-windows-listener
 - **Corrigido em**: 2026-10-22
 - **Avaliação**: ./assessment.md
-- **Estado**: partial
+- **Estado**: applied
 
 ## Resumo
 
@@ -31,7 +31,8 @@ O servidor HTTP de teste agora registra explicitamente o início do descarte e u
 - Comando executado: `pwsh /home/u_zocatel/projetos/DotnetScope/tools/scripts/Invoke-Validation.ps1` → aprovado em container; formatador e build passaram, com 0 avisos e 0 erros; 512 testes unitários aprovados; 141 testes de integração aprovados e 11 ignorados.
 - Comando executado: `git diff --check` → aprovado.
 - Verificação manual: o ruleset `main-integrity` mantém `Full History` e os checks Linux, Windows e macOS como obrigatórios. O bypass de admin está limitado a exigências de PR, sem bypass dos status checks.
-- Pendente: a validação local executou em Linux. O workflow Windows do PR precisa ser executado novamente depois que estas alterações forem publicadas na branch remota.
+- Workflow `PR Validation`, execução `39872904209` no commit `cb6e7d6` → aprovado em Linux x64, Windows x64 e macOS arm64.
+- Workflow `Gitleaks`, execução `39872904140` no commit `cb6e7d6` → aprovado; o check required `Full History` passou.
 
 ## Desvios da Avaliação
 
@@ -39,4 +40,4 @@ Nenhum.
 
 ## Acompanhamento
 
-- Atualizar a branch do PR #13 com esta correção e aguardar sucesso de todos os checks obrigatórios, especialmente `Build, tests and Native AOT (win-x64)`, antes de aprovar ou mesclar.
+- O PR #13 está atualizado com a correção e todos os checks required passaram. A aprovação humana exigida continua pendente antes do merge.
