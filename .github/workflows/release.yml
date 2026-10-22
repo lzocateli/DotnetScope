@@ -24,6 +24,13 @@ on:
       - "tools/scripts/Publish-Aot.ps1"
       - "tools/scripts/Test-AotPackage.ps1"
       - "tools/scripts/Test-Installers.ps1"
+      - "tools/scripts/ReleaseGovernance.psm1"
+      - "tools/scripts/Publish-ReleaseAssets.ps1"
+      - "tools/scripts/Test-ReleaseAssets.ps1"
+      - "tools/scripts/Assert-ReleaseTag.ps1"
+      - "tools/scripts/Test-ReleaseTag.ps1"
+      - "tools/scripts/Assert-WingetSubmissionSource.ps1"
+      - "tools/scripts/Test-WingetSubmissionPolicy.ps1"
   workflow_dispatch:
 
 permissions: {}
@@ -42,11 +49,13 @@ jobs:
     outputs:
       version-suffix: ${{ steps.version.outputs.suffix }}
       publish: ${{ steps.version.outputs.publish }}
+      version-prefix: ${{ steps.version.outputs.version-prefix }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Resolve version
         id: version
@@ -74,11 +83,24 @@ jobs:
           }
           "suffix=$suffix" >> $env:GITHUB_OUTPUT
           "publish=$publish" >> $env:GITHUB_OUTPUT
+          "version-prefix=$prefix" >> $env:GITHUB_OUTPUT
           Write-Output "Versao: $prefix$(if ($suffix) { "-$suffix" }) (publicar: $publish)"
+
+      - name: Verify release tag ancestry
+        if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION_PREFIX: ${{ steps.version.outputs.version-prefix }}
+        run: ./tools/scripts/Assert-ReleaseTag.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE -Tag $env:TAG -VersionPrefix $env:VERSION_PREFIX
 
       - name: Build and tests in container
         shell: pwsh
-        run: ./tools/scripts/Invoke-Validation.ps1 -Engine docker
+        run: |
+          ./tools/scripts/Test-ReleaseAssets.ps1
+          ./tools/scripts/Test-ReleaseTag.ps1
+          ./tools/scripts/Test-WingetSubmissionPolicy.ps1
+          ./tools/scripts/Invoke-Validation.ps1 -Engine docker
 
   build:
     name: Publish ${{ matrix.rid }}
@@ -266,28 +288,22 @@ jobs:
           subject-path: dist/*
 
       - name: Create release
-        shell: bash
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           VERSION_SUFFIX: ${{ needs.validate.outputs.version-suffix }}
         run: |
-          set -euo pipefail
-          flags=()
-          if [ -n "$VERSION_SUFFIX" ]; then
-            flags+=(--prerelease)
+          $arguments = @{
+            Tag = $env:TAG
+            ReleaseDirectory = 'dist'
+            Repository = $env:GITHUB_REPOSITORY
+          }
+          if ($env:VERSION_SUFFIX) {
+            $arguments.Prerelease = $true
           fi
-          # Reexecucao do job: a release ja existe e os assets sao substituidos.
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$TAG" dist/* \
-              --repo "$GITHUB_REPOSITORY" \
-              --verify-tag \
-              --generate-notes \
-              --title "DotnetScope $TAG" \
-              "${flags[@]}"
-          fi
+          ./tools/scripts/Publish-ReleaseAssets.ps1 @arguments
+          exit $LASTEXITCODE
 
       - name: Update Homebrew tap
         id: tap

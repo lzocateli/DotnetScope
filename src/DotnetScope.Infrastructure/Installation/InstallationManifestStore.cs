@@ -22,6 +22,21 @@ public sealed class InstallationManifestStore
     public Task AddAsync(InstallationRecord record, IDiagnosticSink diagnostics, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(record);
+        ArgumentNullException.ThrowIfNull(diagnostics);
+        var isUnix = OperatingSystem.IsLinux() || OperatingSystem.IsMacOS();
+        var sudoUser = record.DeclaredInvoker ?? (isUnix && record.Scope == InstallScope.Global
+            ? Environment.GetEnvironmentVariable("SUDO_USER")
+            : null);
+        var declaredInvoker = ResolveDeclaredInvoker(record.Scope, isUnix, sudoUser);
+        if (isUnix &&
+            record.Scope == InstallScope.Global &&
+            !string.IsNullOrWhiteSpace(sudoUser) &&
+            declaredInvoker is null)
+        {
+            diagnostics.Warning("SUDO_USER não foi registrado no manifesto por formato inválido.");
+        }
+
+        record = record with { DeclaredInvoker = declaredInvoker };
         return UpdateAsync(
             records => records
                 .Where(r => !(InstallLocations.SameRoot(r.Root, record.Root) && r.Component == record.Component && r.Version == record.Version))
@@ -125,16 +140,24 @@ public sealed class InstallationManifestStore
         record.InstalledAt,
         [.. record.Paths],
         [.. record.AddedPaths],
-        record.HostReplaced);
+        record.HostReplaced,
+        record.Scope == InstallScope.Global ? record.DeclaredInvoker : null);
 
-    private static InstallationRecord ToRecord(ManifestEntry entry) =>
-        (entry.Paths ?? []).Concat(entry.AddedPaths ?? []).All(DotnetLayout.IsValidLeaf) && System.IO.Path.IsPathFullyQualified(entry.Root)
-            ? CreateRecord(entry)
-            : throw new DotnetScopeException(
+    private static InstallationRecord ToRecord(ManifestEntry entry)
+    {
+        if (!(entry.Paths ?? []).Concat(entry.AddedPaths ?? []).All(DotnetLayout.IsValidLeaf) ||
+            !System.IO.Path.IsPathFullyQualified(entry.Root))
+        {
+            throw new DotnetScopeException(
                 ExitCodes.UnexpectedError,
                 $"Manifesto com caminho inválido em {entry.Component} {entry.Version}; ele não será usado nem sobrescrito.");
+        }
 
-    private static InstallationRecord CreateRecord(ManifestEntry entry) => new(
+        var declaredInvoker = ValidateDeclaredInvoker(entry);
+        return CreateRecord(entry, declaredInvoker);
+    }
+
+    private static InstallationRecord CreateRecord(ManifestEntry entry, string? declaredInvoker) => new(
         ComponentKindNames.TryParse(entry.Component, out var component)
             ? component
             : throw new DotnetScopeException(ExitCodes.UnexpectedError, $"Componente desconhecido no manifesto: {entry.Component}."),
@@ -148,5 +171,38 @@ public sealed class InstallationManifestStore
         entry.InstalledAt,
         entry.Paths,
         entry.AddedPaths,
-        entry.HostReplaced);
+        entry.HostReplaced,
+        declaredInvoker);
+
+    internal static string? ResolveDeclaredInvoker(InstallScope scope, bool isUnix, string? value) =>
+        scope == InstallScope.Global && isUnix ? NormalizeDeclaredInvoker(value) : null;
+
+    private static string? NormalizeDeclaredInvoker(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.Trim();
+        return normalized.Length <= 256 && !normalized.Any(char.IsControl) ? normalized : null;
+    }
+
+    private static string? ValidateDeclaredInvoker(ManifestEntry entry)
+    {
+        if (entry.DeclaredInvoker is null)
+        {
+            return null;
+        }
+
+        var normalized = NormalizeDeclaredInvoker(entry.DeclaredInvoker);
+        if (entry.Scope != "global" || normalized is null || normalized != entry.DeclaredInvoker)
+        {
+            throw new DotnetScopeException(
+                ExitCodes.UnexpectedError,
+                "Manifesto contém um campo de auditoria inválido; ele não será usado nem sobrescrito.");
+        }
+
+        return normalized;
+    }
 }

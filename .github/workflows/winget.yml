@@ -74,6 +74,15 @@ jobs:
           "date=$date" >> $env:GITHUB_OUTPUT
           Write-Output "Versao $version publicada em $date"
 
+      - name: Validate submission source
+        if: ${{ inputs.submit }}
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./tools/scripts/Assert-WingetSubmissionSource.ps1 -EventName $env:EVENT_NAME -Ref $env:REF -Version $env:VERSION -Submit
+
       - name: Generate manifest
         shell: pwsh
         env:

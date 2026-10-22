@@ -17,7 +17,9 @@ internal sealed record ManifestEntry(
     DateTimeOffset InstalledAt,
     List<string> Paths,
     List<string> AddedPaths,
-    bool HostReplaced);
+    bool HostReplaced,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? DeclaredInvoker = null);
 
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
