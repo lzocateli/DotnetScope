@@ -331,10 +331,42 @@ runners efêmeros.
 | F7c | Global Windows: instalador `.exe` com Authenticode (sem `archive`, decisão de 2026-10-21) | R01–R04, R16, R17, R18 | concluída (testes nativos e E2E global em `windows-2025`) |
 | F7d | Global macOS: `.pkg` com assinatura (sem `archive`, decisão de 2026-10-21) | R01–R03, R16, R17 | concluída (E2E global em `macos-15`, com raiz confiável e não confiável) |
 | F8 | macOS user | E2E em runner macOS | concluída (testes nativos e E2E user em `macos-15`: zsh, bash sem perfil próprio e bash com `~/.bash_profile`) |
-| F9 | Assinatura, SBOM, Authenticode/`.pkg`, `.deb`/APT, winget, Homebrew | artefatos assinados e verificáveis | pendente |
+| F9 | Distribuição sem custo: SBOM atestado, `.deb`, Homebrew e winget (ver [F9 sem custo](#f9-sem-custo-proposta)) | artefatos verificáveis por `gh attestation verify`; canais instalam a release | aprovada (F9a a F9d), pendente |
 
 Cada fase vira uma Issue (template `Tarefa técnica` ou `Propor funcionalidade`)
 com milestone, e é entregue por PR com as evidências do template.
+
+### F9 sem custo (proposta)
+
+Aprovada pelo revisor humano em 2026-10-21: F9a, F9b, F9c e F9d. A verificação
+da assinatura `.p7s` do metadata não foi selecionada e continua em avaliação.
+
+Condição do revisor humano (2026-10-21): nenhum custo financeiro e nenhuma
+complexidade adicional desnecessária ao processo. A F9 original previa assinar os
+binários do DotnetScope com Authenticode e Developer ID, o que exige certificados
+pagos (e, no macOS, o Apple Developer Program). A proposta abaixo substitui essa
+assinatura por mecanismos gratuitos já usados desde a F5.
+
+| Etapa | Entrega | Ferramentas (licença) | Custo e processo |
+| --- | --- | --- | --- |
+| F9a | SBOM SPDX por RID, publicado na release e atestado | `microsoft/sbom-tool` (MIT), `actions/attest-sbom` (MIT; Sigstore keyless via OIDC do GitHub) | Gratuito; passos novos só no `release.yml`. |
+| F9b | Pacote `.deb` (amd64 e arm64) como asset da release, sem repositório APT | `dpkg-deb` em container | Gratuito; sem chave GPG nem hospedagem. |
+| F9c | Fórmula Homebrew em tap próprio (`lzocateli/homebrew-tap`), atualizada pelo `release.yml` | Homebrew (BSD-2-Clause) | Gratuito; exige um repositório novo e um token de escrita só para o tap no Environment `release`. |
+| F9d | Manifesto winget (pacote portátil `.zip`) enviado ao `microsoft/winget-pkgs` | `wingetcreate` (MIT) | Gratuito; cada versão passa pela moderação do winget por PR. |
+
+Fora da F9, por exigirem custo: assinatura Authenticode e Developer ID dos
+binários do DotnetScope e notarização da Apple. Consequências documentadas:
+
+- a integridade e a origem continuam verificáveis por `SHA256SUMS` e
+  `gh attestation verify` (Sigstore, gratuito);
+- `install.sh` (curl) e o Homebrew não marcam quarentena no macOS; baixar o
+  `.tar.gz` pelo navegador exige liberar o binário no Gatekeeper;
+- no Windows, executar o `.exe` baixado pelo navegador pode exibir o
+  SmartScreen; `install.ps1` e o winget são os caminhos recomendados.
+
+Também em avaliação para a F9, sem custo: verificar a assinatura PKCS#7 destacada
+do metadata oficial (`.p7s`), hoje coberto por TLS e allowlist (seção 16), e a
+revisão de segurança anterior à 1.0 (seção 14).
 
 ## 16. Riscos e questões em aberto
 
