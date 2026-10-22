@@ -36,7 +36,20 @@ Para instalar uma versão específica, use `--version 0.1.0` (`install.sh`) ou
 `-Version 0.1.0` (`install.ps1`). Também é possível baixar o pacote
 `dotnetscope-<rid>.tar.gz`/`.zip` da [página de releases](https://github.com/lzocateli/DotnetScope/releases)
 e conferir a atestação de proveniência com
-`gh attestation verify <arquivo> --repo lzocateli/DotnetScope`. No macOS, o
+`gh attestation verify <arquivo> --repo lzocateli/DotnetScope`; cada pacote traz
+também o SBOM SPDX (`dotnetscope-<rid>.spdx.json`), atestado
+([verificação](docs/release.md#verificação-pelo-usuário)).
+
+```bash
+# Homebrew (macOS e Linux)
+brew install lzocateli/tap/dotnetscope
+
+# Debian/Ubuntu (amd64 ou arm64), a partir do asset da release
+curl -fsSLO https://github.com/lzocateli/DotnetScope/releases/latest/download/dotnetscope-linux-x64.deb
+sudo apt install ./dotnetscope-linux-x64.deb
+```
+
+No macOS, o
 escopo user configura `~/.zprofile` (e `~/.profile` para bash de login) e o
 escopo global usa o `.pkg` oficial verificado
 ([referência](docs/cli.md#escopo-global-no-macos)).

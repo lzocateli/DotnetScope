@@ -289,12 +289,15 @@ runners efêmeros.
   via `tools/scripts/Invoke-Validation.ps1`; com `-Aot`, `clang` e `zlib1g-dev`
   são instalados no container descartável (decisão da F0b; imagem própria com
   toolchain AOT pode ser criada na F5).
-- Artefatos: `dotnetscope-<rid>.tar.gz`/`.zip`, `install.sh`, `install.ps1`,
-  `SHA256SUMS` e atestação de proveniência (GitHub Attestations); assinatura e
-  SBOM na F9. Os nomes não levam versão para que `releases/latest/download`
-  seja estável (decisão da F5).
+- Artefatos: `dotnetscope-<rid>.tar.gz`/`.zip`, SBOM `dotnetscope-<rid>.spdx.json`,
+  `.deb` (`linux-x64`, `linux-arm64`), `install.sh`, `install.ps1`, `SHA256SUMS`
+  e atestações de proveniência e de SBOM (GitHub Attestations, F9a/F9b). Os
+  nomes não levam versão para que `releases/latest/download` seja estável
+  (decisão da F5).
 - Canais, em ordem: GitHub Releases + `install.sh`/`install.ps1` (verificam
-  checksum, sem autoelevação) → `.deb` e repositório APT assinado → winget e Homebrew.
+  checksum, sem autoelevação) → `.deb` como asset e tap Homebrew próprio (F9b,
+  F9c) → winget (F9d). Repositório APT assinado fica fora da F9 (exige chave e
+  hospedagem).
 - O próprio `dotnetscope` instala em `~/.local/bin` (user) ou `/usr/local/bin` (global).
 - Versionamento SemVer a partir de `0.1.0`; tag `vX.Y.Z` publica após aprovação
   no Environment `release`.
@@ -331,7 +334,7 @@ runners efêmeros.
 | F7c | Global Windows: instalador `.exe` com Authenticode (sem `archive`, decisão de 2026-10-21) | R01–R04, R16, R17, R18 | concluída (testes nativos e E2E global em `windows-2025`) |
 | F7d | Global macOS: `.pkg` com assinatura (sem `archive`, decisão de 2026-10-21) | R01–R03, R16, R17 | concluída (E2E global em `macos-15`, com raiz confiável e não confiável) |
 | F8 | macOS user | E2E em runner macOS | concluída (testes nativos e E2E user em `macos-15`: zsh, bash sem perfil próprio e bash com `~/.bash_profile`) |
-| F9 | Distribuição sem custo: SBOM atestado, `.deb`, Homebrew e winget (ver [F9 sem custo](#f9-sem-custo-proposta)) | artefatos verificáveis por `gh attestation verify`; canais instalam a release | aprovada (F9a a F9d), pendente |
+| F9 | Distribuição sem custo: SBOM atestado, `.deb`, Homebrew e winget (ver [F9 sem custo](#f9-sem-custo-proposta)) | artefatos verificáveis por `gh attestation verify`; canais instalam a release | em andamento: F9a a F9c implementadas e validadas localmente (smoke do SBOM, `.deb` em Ubuntu 18.04 e Debian 12, `brew install`/`test`/`audit --strict` em container); validação no CI e F9d pendentes |
 
 Cada fase vira uma Issue (template `Tarefa técnica` ou `Propor funcionalidade`)
 com milestone, e é entregue por PR com as evidências do template.
@@ -349,10 +352,26 @@ assinatura por mecanismos gratuitos já usados desde a F5.
 
 | Etapa | Entrega | Ferramentas (licença) | Custo e processo |
 | --- | --- | --- | --- |
-| F9a | SBOM SPDX por RID, publicado na release e atestado | `microsoft/sbom-tool` (MIT), `actions/attest-sbom` (MIT; Sigstore keyless via OIDC do GitHub) | Gratuito; passos novos só no `release.yml`. |
+| F9a | SBOM SPDX por RID, publicado na release e atestado | `microsoft/sbom-tool` (MIT), `actions/attest` (MIT; Sigstore keyless via OIDC do GitHub; substitui `actions/attest-sbom`, obsoleta) | Gratuito; passos novos só no `release.yml`. |
 | F9b | Pacote `.deb` (amd64 e arm64) como asset da release, sem repositório APT | `dpkg-deb` em container | Gratuito; sem chave GPG nem hospedagem. |
 | F9c | Fórmula Homebrew em tap próprio (`lzocateli/homebrew-tap`), atualizada pelo `release.yml` | Homebrew (BSD-2-Clause) | Gratuito; exige um repositório novo e um token de escrita só para o tap no Environment `release`. |
 | F9d | Manifesto winget (pacote portátil `.zip`) enviado ao `microsoft/winget-pkgs` | `wingetcreate` (MIT) | Gratuito; cada versão passa pela moderação do winget por PR. |
+
+Decisões de implementação da F9 (IA assistida; revisor humano: lzocateli):
+
+- D-F9-1: o SBOM descreve o pacote final (binário e `LICENSE`) e as dependências
+  NuGet resolvidas no build do RID; a atestação de SBOM tem como sujeitos o
+  pacote do RID e, no Linux glibc, o `.deb` com o mesmo binário.
+- D-F9-2: o `.deb` instala somente `/usr/bin/dotnetscope` e o `copyright`, sem
+  scripts de manutenção; versões com sufixo usam `~` (ordem do dpkg).
+- D-F9-3: o tap é atualizado dentro do job `publish`, que já exige aprovação no
+  Environment `release`, para não criar uma segunda aprovação; o token é
+  fine-grained, restrito ao tap e lido só de variável de ambiente.
+- D-F9-4: pre-releases não atualizam o tap; a atualização é idempotente e, se o
+  tap já publicar versão maior (correção de linha antiga), mantém o tap com
+  aviso. A criação da release também é idempotente em reexecuções.
+- D-F9-5: as atestações de SBOM são geradas antes da aprovação do `publish`,
+  para que nenhuma release fique pública sem elas, mesmo se o passo do tap falhar.
 
 Fora da F9, por exigirem custo: assinatura Authenticode e Developer ID dos
 binários do DotnetScope e notarização da Apple. Consequências documentadas:

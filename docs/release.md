@@ -10,14 +10,45 @@ comando local equivalente em `tools/scripts/`.
 | --- | --- |
 | `dotnetscope-<rid>.tar.gz` | `dotnetscope` (modo 0755) e `LICENSE`, dono `0:0`; Linux e macOS |
 | `dotnetscope-<rid>.zip` | `dotnetscope.exe` e `LICENSE`; Windows |
+| `dotnetscope-<rid>.spdx.json` | SBOM SPDX 2.2 do pacote do RID: binário, `LICENSE` e dependências NuGet do build |
+| `dotnetscope-linux-x64.deb`, `dotnetscope-linux-arm64.deb` | `/usr/bin/dotnetscope` e `/usr/share/doc/dotnetscope/copyright`, dono `root`; `Depends: libc6 (>= 2.27)` |
 | `install.sh` | instalador POSIX (Linux e macOS) |
 | `install.ps1` | instalador Windows PowerShell 5.1+ e PowerShell 7 |
 | `SHA256SUMS` | SHA-256 de todos os arquivos acima, formato `sha256sum` |
 
-Os nomes não levam versão para que `releases/latest/download/<arquivo>` seja
-estável; a versão fica na tag e em `dotnetscope --version`. Cada arquivo tem
-atestação de proveniência do GitHub (`gh attestation verify`). Assinatura e
-SBOM chegam na F9.
+São 18 arquivos além do `SHA256SUMS` (7 pacotes, 7 SBOMs, 2 `.deb` e 2
+instaladores); o job `publish` falha se a contagem divergir. Os nomes não levam
+versão para que `releases/latest/download/<arquivo>` seja estável; a versão fica
+na tag e em `dotnetscope --version` (no `.deb`, sufixos usam `~`, por exemplo
+`0.4.0~rc.1`, para ordenar antes da versão final).
+
+Cada arquivo tem atestação de proveniência do GitHub e cada pacote (`.tar.gz`,
+`.zip` e `.deb`) tem atestação do SBOM do seu RID, ambas Sigstore keyless via
+OIDC, sem custo. Os binários não têm assinatura Authenticode nem Developer ID
+(exigem certificados pagos; ver [F9 sem custo](plano-implementacao.md#f9-sem-custo-proposta)).
+
+## Verificação pelo usuário
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify dotnetscope-linux-x64.tar.gz --repo lzocateli/DotnetScope
+gh attestation verify dotnetscope-linux-x64.tar.gz --repo lzocateli/DotnetScope \
+  --predicate-type https://spdx.dev/Document/v2.2
+```
+
+## Canais de distribuição
+
+| Canal | Comando | Atualização |
+| --- | --- | --- |
+| Instaladores | `install.sh` / `install.ps1` (ver [README](../README.md#instalação)) | `releases/latest` |
+| `.deb` (asset, sem repositório APT) | `sudo apt install ./dotnetscope-linux-x64.deb` | manual, baixando a nova release |
+| Homebrew (macOS e Linux) | `brew install lzocateli/tap/dotnetscope` | `brew upgrade`; fórmula atualizada pelo `release.yml` |
+
+A fórmula vive em [`lzocateli/homebrew-tap`](https://github.com/lzocateli/homebrew-tap)
+e é gerada por [`New-HomebrewFormula.ps1`](../tools/scripts/New-HomebrewFormula.ps1)
+a partir do `SHA256SUMS`; instala somente o binário (`.tar.gz` de
+`osx-arm64`, `osx-x64`, `linux-arm64` e `linux-x64`) e o `brew test` confere
+`--version`. Pre-releases não atualizam o tap.
 
 ## Build por RID
 
@@ -40,9 +71,16 @@ pwsh ./tools/scripts/Test-AotPackage.ps1 -Rid linux-musl-x64   # alpine:3.17 e a
 pwsh ./tools/scripts/Test-Installers.ps1                        # install.sh com servidor HTTP local
 ```
 
+O SBOM é gerado por `microsoft/sbom-tool` (MIT), ferramenta local fixada em
+[`.config/dotnet-tools.json`](../.config/dotnet-tools.json): no container de
+cross-build para Linux e com o SDK do runner para Windows e macOS. O `.deb` é
+montado com `dpkg-deb --root-owner-group` em `docker.io/library/debian:12`.
+
 O smoke (`Test-AotPackage.ps1`) confere o SHA-256, o conteúdo do pacote e
 executa `--version`, `--help` e `list --available --offline` com as fixtures
-de metadata, em containers sem .NET e sem rede. `Test-Installers.ps1` serve os
+de metadata, em containers sem .NET e sem rede. Quando presentes, confere também
+o SBOM (SPDX 2.2, nome `dotnetscope <versão>` e SHA-256 do binário) e instala,
+executa e remove o `.deb` com `apt-get` em `ubuntu:18.04` e `debian:12`. `Test-Installers.ps1` serve os
 pacotes em `127.0.0.1` e cobre ajuda, erros de uso, checksum adulterado sem
 efeitos, download falho, instalação, reinstalação sem resíduos, aviso de
 `PATH`, destino padrão e `--global`; no Windows, executa `install.ps1` em
@@ -62,10 +100,37 @@ Windows PowerShell 5.1 e PowerShell 7, por `-File` e como scriptblock.
 3. O workflow valida que a tag corresponde a `VersionPrefix`, executa build,
    testes, publicação dos sete RIDs, smoke e testes dos instaladores em seis
    runners.
-4. O job `publish` aguarda aprovação no Environment `release`, regenera o
-   `SHA256SUMS` com os instaladores, gera a atestação e cria a release com
-   notas automáticas (categorias em [`release.yml`](../.github/release.yml)).
-   Tags com sufixo viram pre-release e não aparecem em `releases/latest`.
+4. O job `attest-sbom` atesta o SBOM de cada RID (sujeitos: o pacote e, no
+   Linux glibc, o `.deb`) antes da aprovação, para que a release nunca fique
+   pública sem essas atestações.
+5. O job `publish` aguarda aprovação no Environment `release`, regenera o
+   `SHA256SUMS` com os instaladores, confere os 18 arquivos, gera a atestação
+   de proveniência e cria a release com notas automáticas (categorias em
+   [`release.yml`](../.github/release.yml)). Tags com sufixo viram pre-release
+   e não aparecem em `releases/latest`. Reexecutar o job substitui os assets da
+   release existente.
+6. No mesmo job (sem segunda aprovação) e somente sem sufixo,
+   [`Update-HomebrewTap.ps1`](../tools/scripts/Update-HomebrewTap.ps1) gera a
+   fórmula e envia o commit `dotnetscope X.Y.Z` ao tap. Não faz nada se a
+   fórmula já corresponder à versão; se o tap já publicar versão maior
+   (correção de uma linha antiga), mantém o tap e registra um aviso.
+7. Quando o tap ficou na versão da tag, `verify-homebrew` instala pelo tap em
+   `macos-15` e confere a versão e o `brew test`.
 
 `workflow_dispatch` e pull requests que alteram a cadeia de release executam
-tudo exceto o job `publish`.
+tudo exceto `attest-sbom`, `publish` e `verify-homebrew`.
+
+### Token do tap Homebrew
+
+O secret `HOMEBREW_TAP_TOKEN` fica somente no Environment `release` e é um PAT
+fine-grained com acesso apenas a `lzocateli/homebrew-tap` e permissão
+`Contents: Read and write`. O script o lê da variável de ambiente e o repassa ao
+`git` por `GIT_CONFIG_*`, fora da linha de comando. Ao expirar, gere um novo PAT
+com o mesmo escopo e substitua o secret; sem ele, a release é criada e o passo
+do tap falha, podendo ser reexecutado após a correção.
+
+Para testar localmente sem publicar (commit só no clone temporário):
+
+```bash
+pwsh ./tools/scripts/Update-HomebrewTap.ps1 -Version 0.4.0 -ReleaseDirectory dist
+```

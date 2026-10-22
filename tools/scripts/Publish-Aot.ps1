@@ -9,8 +9,14 @@ em -OutputDirectory um pacote sem versao no nome:
   dotnetscope-<rid>.tar.gz  (Linux e macOS: binario dotnetscope e LICENSE)
   dotnetscope-<rid>.zip     (Windows: dotnetscope.exe e LICENSE)
 
-Ao final, regenera SHA256SUMS (formato sha256sum, LF) com todos os pacotes e
-instaladores presentes em -OutputDirectory.
+Para cada RID gera tambem dotnetscope-<rid>.spdx.json, SBOM SPDX 2.2 do pacote
+(binario, LICENSE e dependencias NuGet do build) com microsoft/sbom-tool (MIT,
+versao fixada em .config/dotnet-tools.json). Para linux-x64 e linux-arm64 gera
+ainda dotnetscope-<rid>.deb (dpkg-deb em container Debian): /usr/bin/dotnetscope
+e /usr/share/doc/dotnetscope/copyright, dependendo de libc6 >= 2.27.
+
+Ao final, regenera SHA256SUMS (formato sha256sum, LF) com todos os pacotes, SBOMs
+e instaladores presentes em -OutputDirectory.
 
 RIDs Linux (linux-x64, linux-arm64, linux-musl-x64) sao compilados em container
 com a toolchain oficial de cross-build do .NET (tools/build/linux-cross.Dockerfile):
@@ -109,7 +115,7 @@ $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory, (Get-Location).Path)
 function Write-ChecksumFile {
     param([string] $Directory)
 
-    $patterns = @('dotnetscope-*.tar.gz', 'dotnetscope-*.zip', 'install.sh', 'install.ps1')
+    $patterns = @('dotnetscope-*.tar.gz', 'dotnetscope-*.zip', 'dotnetscope-*.spdx.json', 'dotnetscope-*.deb', 'install.sh', 'install.ps1')
     $files = Get-ChildItem -LiteralPath $Directory -File |
         Where-Object { $name = $_.Name; $patterns.Where({ $name -like $_ }).Count -gt 0 } |
         Sort-Object Name -CaseSensitive
@@ -180,7 +186,15 @@ if ($linuxRids.Count -gt 0) {
 
 $project = 'src/DotnetScope.Cli/DotnetScope.Cli.csproj'
 $license = Join-Path $repositoryRoot 'LICENSE'
+$debianImage = 'docker.io/library/debian:12'
 $null = New-Item -ItemType Directory -Force -Path $OutputDirectory
+
+[xml] $props = Get-Content -LiteralPath (Join-Path $repositoryRoot 'Directory.Build.props') -Raw
+$versionPrefix = @($props.Project.PropertyGroup | ForEach-Object { $_.VersionPrefix } | Where-Object { $_ })[0]
+$productVersion = if ([string]::IsNullOrWhiteSpace($VersionSuffix)) { $versionPrefix } else { "$versionPrefix-$VersionSuffix" }
+# Debian ordena pre-releases antes da versao final com '~' (0.4.0~rc.1 < 0.4.0).
+# No dpkg, '-' separaria a revisao Debian; '~' ordena a pre-release antes da versao final.
+$debianVersion = if ([string]::IsNullOrWhiteSpace($VersionSuffix)) { $versionPrefix } else { "$versionPrefix~$($VersionSuffix -replace '-', '~')" }
 
 function Get-PublishArgumentList {
     param([string] $TargetRid)
@@ -198,11 +212,48 @@ function Get-PublishArgumentList {
     return $arguments
 }
 
+function Invoke-ContainerScript {
+    param([string] $Image, [string] $Script)
+
+    if ($containerEngine -eq 'docker') {
+        # Docker cria arquivos como root; devolve os diretorios gerados ao usuario do host.
+        $hostUid = (& id -u).Trim()
+        $hostGid = (& id -g).Trim()
+        $Script = "status=0; $Script || status=`$?; chown -R ${hostUid}:${hostGid} /workspace/artifacts; exit `$status"
+    }
+
+    $environment = @(
+        '--env', 'NUGET_PACKAGES=/workspace/artifacts/.nuget/packages',
+        '--env', 'DOTNET_CLI_TELEMETRY_OPTOUT=1',
+        '--env', 'DOTNET_NOLOGO=1'
+    )
+    if ($env:GITHUB_ACTIONS -eq 'true') {
+        $environment += @('--env', 'GITHUB_ACTIONS=true')
+    }
+
+    & $containerEngine run --rm --user 0:0 `
+        --volume "${repositoryRoot}:/workspace" `
+        --workdir /workspace `
+        @environment `
+        $Image sh -c $Script | Out-Host
+    return $LASTEXITCODE
+}
+
+function ConvertTo-ShellArguments {
+    param([string[]] $Arguments)
+    return ($Arguments | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join ' '
+}
+
+function Get-ToolchainTag {
+    param([string] $TargetRid)
+    return "localhost/dotnetscope-cross:$TargetRid"
+}
+
 function Invoke-LinuxPublish {
     param([string] $TargetRid)
 
     $image, $sysRoot = $crossImages[$TargetRid]
-    $toolchainTag = "localhost/dotnetscope-cross:$TargetRid"
+    $toolchainTag = Get-ToolchainTag -TargetRid $TargetRid
 
     Write-Host "Preparando toolchain $TargetRid com $containerEngine"
     & $containerEngine build --quiet `
@@ -216,29 +267,101 @@ function Invoke-LinuxPublish {
     }
 
     $publish = (Get-PublishArgumentList -TargetRid $TargetRid) + @("-p:SysRoot=$sysRoot", '-p:LinkerFlavor=lld')
-    $quoted = ($publish | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join ' '
-    $script = "dotnet $quoted"
-    if ($containerEngine -eq 'docker') {
-        # Docker cria arquivos como root; devolve os diretorios gerados ao usuario do host.
-        $hostUid = (& id -u).Trim()
-        $hostGid = (& id -g).Trim()
-        $script = "status=0; $script || status=`$?; chown -R ${hostUid}:${hostGid} /workspace/artifacts; exit `$status"
-    }
-
-    $environment = @(
-        '--env', 'NUGET_PACKAGES=/workspace/artifacts/.nuget/packages'
-    )
-    if ($env:GITHUB_ACTIONS -eq 'true') {
-        $environment += @('--env', 'GITHUB_ACTIONS=true')
-    }
-
     Write-Host "Publicando $TargetRid (sysroot $sysRoot)"
-    & $containerEngine run --rm --user 0:0 `
-        --volume "${repositoryRoot}:/workspace" `
-        --workdir /workspace `
-        @environment `
-        $toolchainTag sh -c $script | Out-Host
-    return $LASTEXITCODE
+    return Invoke-ContainerScript -Image $toolchainTag -Script "dotnet $(ConvertTo-ShellArguments -Arguments $publish)"
+}
+
+function New-Sbom {
+    param([string] $TargetRid)
+
+    # O SBOM descreve o pacote final (binario e LICENSE) e as dependencias NuGet resolvidas no build do RID.
+    $generate = @(
+        'tool', 'run', 'sbom-tool', 'generate',
+        '-b', "artifacts/package/$TargetRid",
+        '-bc', "artifacts/aot-build/$TargetRid",
+        '-pn', 'dotnetscope',
+        '-pv', $productVersion,
+        '-ps', 'Lincoln Zocateli',
+        '-nsb', 'https://github.com/lzocateli/DotnetScope',
+        '-m', "artifacts/sbom/$TargetRid",
+        '-D', 'true',
+        '-V', 'Warning'
+    )
+
+    Write-Host "Gerando SBOM de $TargetRid"
+    $null = New-Item -ItemType Directory -Force -Path (Join-Path $repositoryRoot "artifacts/sbom/$TargetRid")
+    if ($TargetRid -like 'linux-*') {
+        $code = Invoke-ContainerScript -Image (Get-ToolchainTag -TargetRid $TargetRid) `
+            -Script "dotnet tool restore >/dev/null && dotnet $(ConvertTo-ShellArguments -Arguments $generate)"
+    }
+    else {
+        Push-Location $repositoryRoot
+        try {
+            & dotnet tool restore | Out-Null
+            $code = $LASTEXITCODE
+            if ($code -eq 0) {
+                & dotnet @generate | Out-Host
+                $code = $LASTEXITCODE
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    $manifest = Join-Path $repositoryRoot "artifacts/sbom/$TargetRid/_manifest/spdx_2.2/manifest.spdx.json"
+    if ($code -ne 0 -or -not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
+        throw "sbom-tool falhou para $TargetRid (codigo $code)."
+    }
+
+    $target = Join-Path $OutputDirectory "dotnetscope-$TargetRid.spdx.json"
+    Copy-Item -LiteralPath $manifest -Destination $target -Force
+    Write-Output "SBOM: $target"
+}
+
+function New-DebPackage {
+    param([string] $TargetRid)
+
+    $architecture = @{ 'linux-x64' = 'amd64'; 'linux-arm64' = 'arm64' }[$TargetRid]
+    $tree = Join-Path $repositoryRoot "artifacts/deb/$TargetRid"
+    if (Test-Path -LiteralPath $tree) {
+        Remove-Item -LiteralPath $tree -Recurse -Force
+    }
+
+    $null = New-Item -ItemType Directory -Force -Path (Join-Path $tree 'root/DEBIAN'), (Join-Path $tree 'root/usr/bin'), (Join-Path $tree 'root/usr/share/doc/dotnetscope')
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot "artifacts/package/$TargetRid/dotnetscope") -Destination (Join-Path $tree 'root/usr/bin/dotnetscope')
+    Copy-Item -LiteralPath $license -Destination (Join-Path $tree 'root/usr/share/doc/dotnetscope/copyright')
+    $control = @(
+        'Package: dotnetscope',
+        "Version: $debianVersion",
+        "Architecture: $architecture",
+        'Maintainer: Lincoln Zocateli <16601706+lzocateli@users.noreply.github.com>',
+        'Depends: libc6 (>= 2.27)',
+        'Section: devel',
+        'Priority: optional',
+        'Homepage: https://github.com/lzocateli/DotnetScope',
+        'Description: Instala, lista, valida e remove SDKs e runtimes .NET',
+        ' CLI Native AOT que resolve versoes pelo metadata oficial da Microsoft,',
+        ' verifica SHA-512, extrai com seguranca e configura DOTNET_ROOT e PATH',
+        ' nos escopos user e global, sem depender de .NET instalado.'
+    ) -join "`n"
+    [IO.File]::WriteAllText((Join-Path $tree 'root/DEBIAN/control'), $control + "`n", [Text.UTF8Encoding]::new($false))
+
+    $package = "artifacts/release-deb-$TargetRid.deb"
+    $script = "find artifacts/deb/$TargetRid/root -type d -exec chmod 0755 {} + " +
+        "&& chmod 0644 artifacts/deb/$TargetRid/root/DEBIAN/control artifacts/deb/$TargetRid/root/usr/share/doc/dotnetscope/copyright " +
+        "&& chmod 0755 artifacts/deb/$TargetRid/root/usr/bin/dotnetscope " +
+        "&& dpkg-deb --root-owner-group -Zxz --build artifacts/deb/$TargetRid/root $package >/dev/null " +
+        "&& dpkg-deb --info $package >/dev/null"
+    Write-Host "Gerando pacote .deb de $TargetRid ($architecture)"
+    $code = Invoke-ContainerScript -Image $debianImage -Script $script
+    if ($code -ne 0) {
+        throw "dpkg-deb falhou para $TargetRid (codigo $code)."
+    }
+
+    $target = Join-Path $OutputDirectory "dotnetscope-$TargetRid.deb"
+    Move-Item -LiteralPath (Join-Path $repositoryRoot $package) -Destination $target -Force
+    Write-Output "Pacote: $target"
 }
 
 function Invoke-NativePublish {
@@ -311,6 +434,10 @@ foreach ($targetRid in $Rid) {
     }
 
     Build-Package -TargetRid $targetRid
+    New-Sbom -TargetRid $targetRid
+    if ($targetRid -in 'linux-x64', 'linux-arm64') {
+        New-DebPackage -TargetRid $targetRid
+    }
 }
 
 Write-ChecksumFile -Directory $OutputDirectory

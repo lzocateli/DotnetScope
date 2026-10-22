@@ -8,6 +8,11 @@ executa: --version (deve comecar pela versao esperada), --help e
 'list --available --offline' usando as fixtures de tests/Fixtures/metadata
 como cache, sem acesso a rede.
 
+Se existir dotnetscope-<rid>.spdx.json, confere o SBOM: SPDX 2.2, nome e versao
+do produto e SHA-256 do binario igual ao do pacote. Para linux-x64 e linux-arm64,
+se existir dotnetscope-<rid>.deb, instala o pacote com apt-get em Ubuntu 18.04 e
+Debian 12 sem rede, executa /usr/bin/dotnetscope e remove o pacote.
+
 RIDs Linux rodam em containers limpos, sem .NET: imagens glibc antigas para
 validar a base de compatibilidade (glibc 2.27) e Alpine para musl. O host deve
 ter a mesma arquitetura do RID (sem emulacao).
@@ -144,6 +149,20 @@ try {
     }
     $binary = Join-Path $extractDirectory $binaryName
 
+    $sbom = Join-Path $ReleaseDirectory "dotnetscope-$Rid.spdx.json"
+    if (Test-Path -LiteralPath $sbom -PathType Leaf) {
+        $document = Get-Content -LiteralPath $sbom -Raw | ConvertFrom-Json
+        $binaryHash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant()
+        $entry = @($document.files | Where-Object { $_.fileName -eq "./$binaryName" })
+        $listed = if ($entry.Count -eq 1) { @($entry[0].checksums | Where-Object { $_.algorithm -eq 'SHA256' } | ForEach-Object { $_.checksumValue }) } else { @() }
+        if ($document.spdxVersion -ne 'SPDX-2.2' -or $document.name -ne "dotnetscope $expectedVersion" -or $listed -notcontains $binaryHash) {
+            [Console]::Error.WriteLine("SBOM invalido em $(Split-Path -Leaf $sbom): versao '$($document.spdxVersion)', nome '$($document.name)', hash do binario ausente.")
+            exit 1
+        }
+
+        Write-Output "SBOM conferido: $(Split-Path -Leaf $sbom)"
+    }
+
     if ($Rid -like 'linux-*') {
         $ridArchitecture = if ($Rid -like '*-arm64') { [Runtime.InteropServices.Architecture]::Arm64 } else { [Runtime.InteropServices.Architecture]::X64 }
         if (-not $IsLinux -or [Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne $ridArchitecture) {
@@ -209,6 +228,34 @@ echo "ok: $version"
             exit 1
         }
         Write-Output "Smoke de $Rid aprovado em: $($Image -join ', ')"
+
+        $deb = Join-Path $ReleaseDirectory "dotnetscope-$Rid.deb"
+        if ($Rid -in 'linux-x64', 'linux-arm64' -and (Test-Path -LiteralPath $deb -PathType Leaf)) {
+            $debVersion = $expectedVersion -replace '-', '~'
+            $debSmoke = @'
+set -eu
+export DEBIAN_FRONTEND=noninteractive
+apt-get install -y -qq /pkg/dotnetscope.deb >/dev/null
+[ "$(dpkg-query -W -f='${Version}' dotnetscope)" = "$EXPECTED_DEB" ] || { echo "versao do pacote inesperada" >&2; exit 1; }
+case "$(/usr/bin/dotnetscope --version)" in "$EXPECTED_VERSION"|"$EXPECTED_VERSION"+*) ;; *) echo "versao inesperada" >&2; exit 1 ;; esac
+dpkg -L dotnetscope | grep -qx /usr/share/doc/dotnetscope/copyright
+apt-get remove -y -qq dotnetscope >/dev/null
+[ ! -e /usr/bin/dotnetscope ] || { echo "binario permaneceu apos remover o pacote" >&2; exit 1; }
+echo "deb ok"
+'@ -replace "`r", ''
+            foreach ($name in @('docker.io/library/ubuntu:18.04', 'docker.io/library/debian:12')) {
+                Write-Output "== $Rid .deb em $name"
+                & $containerEngine run --rm --network none `
+                    --volume "${deb}:/pkg/dotnetscope.deb:ro" `
+                    --env "EXPECTED_VERSION=$expectedVersion" `
+                    --env "EXPECTED_DEB=$debVersion" `
+                    $name sh -c $debSmoke
+                if ($LASTEXITCODE -ne 0) {
+                    [Console]::Error.WriteLine("Pacote .deb de $Rid falhou em $name (codigo $LASTEXITCODE).")
+                    exit 1
+                }
+            }
+        }
         exit 0
     }
 
