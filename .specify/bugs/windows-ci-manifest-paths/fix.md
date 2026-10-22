@@ -13,7 +13,7 @@ As fixtures agora derivam `root` do diretório temporário dos testes, tornando 
 
 | Arquivo | Alteração | Notas |
 |------|--------|-------|
-| `tests/DotnetScope.UnitTests/InstallationManifestStoreTests.cs` | modificado | Caminho de fixture portátil e serialização JSON de strings com `JsonEncodedText`, compatível com as verificações de trimming/AOT. As fixtures legada e inválida usam um helper comum. |
+| `tests/DotnetScope.UnitTests/InstallationManifestStoreTests.cs` | modificado | Caminho de fixture portátil e serialização JSON de strings com `JsonEncodedText`, compatível com as verificações de trimming/AOT. As fixtures legada e inválida usam um helper comum; a persistência respeita a política de plataforma do campo. |
 
 ## Destaques do Diff
 
@@ -22,7 +22,7 @@ As fixtures agora derivam `root` do diretório temporário dos testes, tornando 
 
 ## Testes Adicionados ou Atualizados
 
-- `InstallationManifestStoreTests.AddAsync_PersistsDeclaredInvokerForGlobalRecord` — valida persistência e leitura com caminho portável.
+- `InstallationManifestStoreTests.AddAsync_AppliesDeclaredInvokerPlatformPolicy` — valida persistência em Linux/macOS e omissão em Windows, com leitura usando caminho portável.
 - `InstallationManifestStoreTests.Read_LegacyManifestWithoutDeclaredInvoker_RemainsCompatible` — valida compatibilidade de manifesto legado com caminho portável.
 - `InstallationManifestStoreTests.Read_InvalidDeclaredInvoker_FailsWithoutRevealingItsValue` — confirma a causa da rejeição e protege contra exposição do valor.
 
@@ -32,13 +32,14 @@ As fixtures agora derivam `root` do diretório temporário dos testes, tornando 
 - `dotnet format DotnetScope.slnx --verify-no-changes --no-restore` na mesma imagem → aprovado.
 - `dotnet test tests/DotnetScope.UnitTests/DotnetScope.UnitTests.csproj --configuration Release` na mesma imagem → aprovado, 512 testes.
 - `git diff --check` → aprovado.
-- A validação específica no runner Windows ainda está pendente; deve ser confirmada no workflow do PR.
+- A primeira execução atualizada do job Windows confirmou a correção das fixtures de caminho, mas encontrou uma expectativa incorreta adicional no teste de `AddAsync`: o campo `declaredInvoker` é omitido no Windows por política. A asserção foi ajustada para validar esse comportamento.
+- A execução atualizada do job Windows, após esse ajuste, ainda está pendente.
 
 ## Desvios da Avaliação
 
-Nenhum. `JsonEncodedText` foi usado para escapar as strings JSON sem introduzir chamadas de serialização incompatíveis com as verificações de trimming/AOT dos testes.
+O primeiro ajuste corrigiu os caminhos conforme a avaliação. A execução Windows revelou que o teste de persistência também precisava respeitar a política existente que limita `declaredInvoker` a Linux/macOS; o teste agora verifica a persistência nesses sistemas e a omissão em Windows. `JsonEncodedText` escapa as strings JSON sem introduzir chamadas incompatíveis com as verificações de trimming/AOT.
 
 ## Acompanhamento
 
-- Confirmar o job `Build, tests and Native AOT (win-x64)` no PR após publicar a correção.
+- Confirmar o job `Build, tests and Native AOT (win-x64)` no PR após publicar o ajuste por plataforma.
 - Se o runner Windows passar, atualizar o estado deste relatório para `applied`.

@@ -26,7 +26,7 @@ public sealed class InstallationManifestStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task AddAsync_PersistsDeclaredInvokerForGlobalRecord()
+    public async Task AddAsync_AppliesDeclaredInvokerPlatformPolicy()
     {
         var record = CreateRecord(InstallScope.Global) with { DeclaredInvoker = "sudo-user" };
 
@@ -36,8 +36,18 @@ public sealed class InstallationManifestStoreTests : IDisposable
             CancellationToken.None);
 
         var stored = Assert.Single(new InstallationManifestStore(ManifestPath).Read());
-        Assert.Equal("sudo-user", stored.DeclaredInvoker);
-        Assert.Contains("\"declaredInvoker\": \"sudo-user\"", File.ReadAllText(ManifestPath), StringComparison.Ordinal);
+        var shouldPersistDeclaredInvoker = OperatingSystem.IsLinux() || OperatingSystem.IsMacOS();
+        Assert.Equal(shouldPersistDeclaredInvoker ? "sudo-user" : null, stored.DeclaredInvoker);
+
+        var manifest = File.ReadAllText(ManifestPath);
+        if (shouldPersistDeclaredInvoker)
+        {
+            Assert.Contains("\"declaredInvoker\": \"sudo-user\"", manifest, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.DoesNotContain("\"declaredInvoker\"", manifest, StringComparison.Ordinal);
+        }
     }
 
     [Fact]
