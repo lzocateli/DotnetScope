@@ -97,7 +97,6 @@ public sealed class PowerShellHostProbe(string? documents, IEnvironmentVariableS
             + "$u = [Text.Encoding]::UTF8\n"
             + "'" + Marker + "' + [Convert]::ToBase64String($u.GetBytes([string]$d)) + '|' + [Convert]::ToBase64String($u.GetBytes([string]$env:DOTNET_ROOT))\n";
         var startInfo = CreateStartInfo(host.Executable, script, loadProfile: true);
-        startInfo.Environment["PATH"] = NewProcessPath();
         startInfo.Environment.Remove("DOTNET_ROOT");
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -155,6 +154,25 @@ public sealed class PowerShellHostProbe(string? documents, IEnvironmentVariableS
             .Where(p => !string.IsNullOrEmpty(p))
             .Select(p => store.Expand(p!)));
 
+    /// <summary>
+    /// Ambiente de um terminal novo para os hosts: Path da máquina seguido do do usuário e <c>PSModulePath</c> persistido
+    /// (o do usuário substitui o da máquina, como o Windows monta). O <c>PSModulePath</c> herdado de um <c>pwsh</c> aponta
+    /// para módulos do PowerShell 7, que o Windows PowerShell 5.1 não carrega (<c>Get-ExecutionPolicy</c> falharia).
+    /// </summary>
+    private void ApplyNewTerminalEnvironment(ProcessStartInfo startInfo)
+    {
+        startInfo.Environment["PATH"] = NewProcessPath();
+        var modulePath = store.GetUser("PSModulePath")?.Value ?? store.GetMachine("PSModulePath");
+        if (string.IsNullOrEmpty(modulePath))
+        {
+            startInfo.Environment.Remove("PSModulePath");
+        }
+        else
+        {
+            startInfo.Environment["PSModulePath"] = store.Expand(modulePath);
+        }
+    }
+
     private string? FindPwsh()
     {
         foreach (var directory in WindowsPathList.Split(NewProcessPath()))
@@ -178,7 +196,7 @@ public sealed class PowerShellHostProbe(string? documents, IEnvironmentVariableS
     }
 
     /// <summary>Política efetiva do host, sem carregar perfis; nula se o host falhar ou exceder o prazo.</summary>
-    private static string? ReadPolicy(string executable)
+    private string? ReadPolicy(string executable)
     {
         var startInfo = CreateStartInfo(executable, "Get-ExecutionPolicy", loadProfile: false);
         var output = new StringBuilder();
@@ -228,7 +246,7 @@ public sealed class PowerShellHostProbe(string? documents, IEnvironmentVariableS
         return policy is not null && policy.All(char.IsAsciiLetter) ? policy : null;
     }
 
-    private static ProcessStartInfo CreateStartInfo(string executable, string script, bool loadProfile)
+    private ProcessStartInfo CreateStartInfo(string executable, string script, bool loadProfile)
     {
         var startInfo = new ProcessStartInfo(executable)
         {
@@ -250,6 +268,7 @@ public sealed class PowerShellHostProbe(string? documents, IEnvironmentVariableS
 
         // Uma política de escopo Process herdada deste processo não vale para um terminal novo.
         startInfo.Environment.Remove("PSExecutionPolicyPreference");
+        ApplyNewTerminalEnvironment(startInfo);
         return startInfo;
     }
 
