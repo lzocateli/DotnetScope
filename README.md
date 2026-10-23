@@ -98,8 +98,15 @@ para as variáveis do usuário (`HKCU\Environment`), valendo em terminais novos:
 dotnetscope install sdk lts --yes                 # zip oficial, DOTNET_ROOT e Path do usuário
 dotnetscope env show | Out-String | Invoke-Expression   # somente para a sessão atual
 dotnetscope env remove                            # restaura os valores anteriores do registro
+dotnetscope install sdk lts --yes --windows-env-target profile   # sem registro: perfis do PowerShell
 dotnetscope install runtime 9.0 --scope global --yes   # terminal elevado: instalador oficial verificado (Authenticode)
 ```
+
+Se uma política bloqueia ou desfaz a escrita em `HKCU\Environment`, use
+`--windows-env-target profile`: o ambiente vai para
+`%LOCALAPPDATA%\dotnetscope\env.ps1`, carregado pelos perfis do PowerShell, e
+vale somente em terminais PowerShell
+([referência](docs/cli.md#windows-sem-registro---windows-env-target-profile)).
 
 `--configure-env` tem padrão `true`: a CLI grava um bloco gerenciado
 (`# >>> dotnetscope >>>`) nos perfis do shell ou no registro do Windows. Com

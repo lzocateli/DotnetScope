@@ -117,7 +117,9 @@ internal static class DoctorCommand
         var findings = new List<DoctorFinding>();
         if (services.IsWindowsTarget)
         {
-            return CheckWindowsEnvironment(services.CreateWindowsEnvironment(home));
+            findings.AddRange(CheckWindowsEnvironment(services.CreateWindowsEnvironment(home)));
+            findings.AddRange(await CheckWindowsProfileEnvironmentAsync(services.CreateWindowsProfileEnvironment(home), cancellationToken).ConfigureAwait(false));
+            return findings;
         }
 
         var configurator = new UnixEnvironmentConfigurator(services.CreateEnvironmentLayout(home));
@@ -196,6 +198,68 @@ internal static class DoctorCommand
 
     private static EnvironmentTarget EnvironmentSetupTarget(string root) => EnvironmentSetup.CreateGlobalTarget(root, telemetryOptOut: false);
 
+    private static async Task<List<DoctorFinding>> CheckWindowsProfileEnvironmentAsync(
+        WindowsProfileEnvironmentConfigurator configurator, CancellationToken cancellationToken)
+    {
+        var findings = new List<DoctorFinding>();
+        var root = configurator.ConfiguredRoot();
+        var blocks = configurator.PlanRemove().Profiles.Count;
+        if (root is null)
+        {
+            // PlanRemove só decodifica perfis com o marcador: perfis de terceiros em UTF-16 ou ANSI não geram erro aqui.
+            if (blocks > 0)
+            {
+                findings.Add(new DoctorFinding(
+                    "env-script-missing",
+                    FindingSeverity.Warning,
+                    $"Perfis do PowerShell carregam o bloco do dotnetscope, mas {configurator.EnvScript} não existe; execute dotnetscope env apply --windows-env-target profile ou env remove.",
+                    false,
+                    false));
+            }
+
+            return findings;
+        }
+
+        if (!File.Exists(Path.Combine(root, "dotnet.exe")))
+        {
+            findings.Add(new DoctorFinding("env-root-missing", FindingSeverity.Warning, $"{configurator.EnvScript} aponta para {root}, que não tem dotnet.exe.", false, false));
+            return findings;
+        }
+
+        if (blocks == 0)
+        {
+            findings.Add(new DoctorFinding(
+                "env-profile-missing",
+                FindingSeverity.Warning,
+                $"{configurator.EnvScript} existe, mas nenhum perfil do PowerShell o carrega; execute dotnetscope env apply --windows-env-target profile.",
+                false,
+                false));
+            return findings;
+        }
+
+        var verification = await configurator.VerifyAsync(root, cancellationToken).ConfigureAwait(false);
+        if (verification is null)
+        {
+            findings.Add(new DoctorFinding(
+                "powershell-policy",
+                FindingSeverity.Warning,
+                "Nenhum PowerShell com perfil configurado tem política de execução que permita carregá-lo (exige RemoteSigned, Unrestricted ou Bypass).",
+                false,
+                false));
+        }
+        else if (verification.Matches != true)
+        {
+            findings.Add(new DoctorFinding(
+                "new-terminal",
+                FindingSeverity.Warning,
+                $"Em um terminal novo do {verification.Shell}, dotnet resolve para {verification.ResolvedDotnet ?? "nada"} em vez de {root}.",
+                false,
+                false));
+        }
+
+        return findings;
+    }
+
     private static List<DoctorFinding> CheckWindowsEnvironment(WindowsEnvironmentConfigurator configurator)
     {
         var findings = new List<DoctorFinding>();
@@ -216,7 +280,8 @@ internal static class DoctorCommand
             findings.Add(new DoctorFinding(
                 "env-registry-changed",
                 FindingSeverity.Warning,
-                $"DOTNET_ROOT ou Path em {configurator.Store.Location} não correspondem mais à configuração do dotnetscope; execute dotnetscope env apply.",
+                $"DOTNET_ROOT ou Path em {configurator.Store.Location} não correspondem mais à configuração do dotnetscope; execute dotnetscope env apply. "
+                + "Se uma política reescreve o ambiente do usuário a cada logon, use dotnetscope env apply --windows-env-target profile.",
                 false,
                 false));
         }

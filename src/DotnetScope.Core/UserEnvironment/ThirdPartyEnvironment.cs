@@ -38,6 +38,63 @@ public static partial class ThirdPartyEnvironment
         return result;
     }
 
+    /// <summary>
+    /// Atribuições <c>$env:DOTNET_ROOT = ...</c> em um perfil do PowerShell, fora do bloco do DotnetScope. O valor só é
+    /// resolvido quando é literal (aspas simples, ou aspas duplas sem <c>$</c> nem crase); caso contrário é nulo.
+    /// </summary>
+    public static IReadOnlyList<ThirdPartyAssignment> FindPowerShellAssignments(string file, string content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        var ownBlock = ProfileBlockEditor.Find(content, file);
+        var result = new List<ThirdPartyAssignment>();
+        var number = 0;
+        foreach (var (text, start, _) in ProfileBlockEditor.SplitLines(content))
+        {
+            number++;
+            if (ownBlock is { } block && start >= block.Start && start < block.End)
+            {
+                continue;
+            }
+
+            var match = PowerShellAssignment().Match(text.TrimEnd('\r'));
+            if (match.Success)
+            {
+                var raw = match.Groups["value"].Value.Trim();
+                result.Add(new ThirdPartyAssignment(file, number, raw, ResolvePowerShell(raw)));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Normaliza um caminho do Windows para comparação: sem barra final; compare sem distinção de maiúsculas.</summary>
+    public static string NormalizeWindows(string path) => path.Length > 3 ? path.TrimEnd('\\', '/') : path;
+
+    internal static string? ResolvePowerShell(string raw)
+    {
+        var value = raw;
+        var comment = value.IndexOf(" #", StringComparison.Ordinal);
+        if (comment >= 0)
+        {
+            value = value[..comment].TrimEnd();
+        }
+
+        value = value.TrimEnd(';').TrimEnd();
+        if (value.Length >= 2 && value[0] == '\'' && value[^1] == '\'')
+        {
+            var literal = value[1..^1];
+            return literal.Length == 0 || literal.Contains('\'', StringComparison.Ordinal) ? null : NormalizeWindows(literal);
+        }
+
+        if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+        {
+            var literal = value[1..^1];
+            return literal.Length == 0 || literal.IndexOfAny(['$', '`', '"']) >= 0 ? null : NormalizeWindows(literal);
+        }
+
+        return null;
+    }
+
     /// <summary>Normaliza um caminho para comparação (sem barra final).</summary>
     public static string Normalize(string path) => path.Length > 1 ? path.TrimEnd('/') : path;
 
@@ -79,4 +136,7 @@ public static partial class ThirdPartyEnvironment
 
     [GeneratedRegex(@"^\s*set\s+(?:-[a-zA-Z]+\s+)*DOTNET_ROOT\s+(?<value>\S.*)$")]
     private static partial Regex FishAssignment();
+
+    [GeneratedRegex(@"^\s*\$env:DOTNET_ROOT\s*=\s*(?<value>\S.*)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex PowerShellAssignment();
 }

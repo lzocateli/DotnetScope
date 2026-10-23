@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-Cenario E2E do escopo user no Windows: instala SDK e runtime oficiais, valida o registro e reverte tudo.
+Cenario E2E do escopo user no Windows: instala SDK e runtime oficiais, valida o registro e os perfis do PowerShell e reverte tudo.
 
 .DESCRIPTION
 Executado por tools/scripts/Invoke-WindowsE2E.ps1 somente em runner efemero, porque altera
-HKCU\Environment e o Path da maquina (HKLM). Etapas:
+HKCU\Environment, o Path da maquina (HKLM) e os perfis do PowerShell do usuario. Etapas:
 
 1. DOTNET_ROOT de terceiro no registro: install falha com codigo 6 sem alterar nada.
 2. Com o dotnet da maquina no Path: install configura o registro e avisa que o Path da maquina
@@ -13,7 +13,10 @@ HKCU\Environment e o Path da maquina (HKLM). Etapas:
    do registro, como o Explorer faz) resolve dotnet para a raiz do usuario e lista o SDK.
 4. Idempotencia, runtime adicional, list --installed com origens e doctor sem erros.
 5. env remove restaura HKCU\Environment exatamente; env apply reaplica.
-6. uninstall dos dois componentes remove a configuracao e restaura o registro exatamente.
+6. --windows-env-target profile configura os perfis do PowerShell sem alterar o registro; um pwsh novo
+   resolve dotnet pela raiz do usuario; o registro e reaplicado e coexiste com os perfis.
+7. uninstall dos dois componentes remove as duas configuracoes e restaura o registro e os perfis
+   exatamente.
 
 .PARAMETER Binary
 Caminho do dotnetscope.exe publicado.
@@ -114,6 +117,37 @@ function Invoke-NewTerminal([string] $Command) {
     return [pscustomobject]@{ Code = $process.ExitCode; Output = $output }
 }
 
+# Terminal PowerShell novo: mesmo Path de Invoke-NewTerminal, carregando os perfis do usuario.
+function Invoke-NewPowerShell([string] $Command) {
+    $machine = (Get-RegistryVariable ([Microsoft.Win32.Registry]::LocalMachine) $machineKeyPath 'Path').Value
+    $user = Get-RegistryVariable ([Microsoft.Win32.Registry]::CurrentUser) $userKeyPath 'Path'
+    $startInfo = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path)
+    foreach ($argument in '-NoLogo', '-NonInteractive', '-Command', $Command) { $startInfo.ArgumentList.Add($argument) }
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.Environment['PATH'] = [Environment]::ExpandEnvironmentVariables("$machine;$($user.Value)")
+    $startInfo.Environment.Remove('DOTNET_ROOT') | Out-Null
+    $startInfo.Environment.Remove('PSExecutionPolicyPreference') | Out-Null
+    $process = [Diagnostics.Process]::Start($startInfo)
+    $output = $process.StandardOutput.ReadToEnd()
+    $process.WaitForExit()
+    return [pscustomobject]@{ Code = $process.ExitCode; Output = $output }
+}
+
+$documents = [Environment]::GetFolderPath('MyDocuments')
+$profileFiles = @(
+    (Join-Path $documents 'WindowsPowerShell\profile.ps1'),
+    (Join-Path $documents 'PowerShell\profile.ps1')
+)
+
+function Get-ProfileSnapshot {
+    return ($profileFiles | ForEach-Object {
+            if (Test-Path -LiteralPath $_) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($_)) } else { '<ausente>' }
+        }) -join '|'
+}
+
+$originalProfiles = Get-ProfileSnapshot
+$envScript = Join-Path $env:LOCALAPPDATA 'dotnetscope\env.ps1'
 $originalUser = Get-UserSnapshot
 $originalRootValue = Get-RegistryVariable ([Microsoft.Win32.Registry]::CurrentUser) $userKeyPath 'DOTNET_ROOT'
 $machineVariable = Get-RegistryVariable ([Microsoft.Win32.Registry]::LocalMachine) $machineKeyPath 'Path'
@@ -186,7 +220,22 @@ try {
     if ($reapply.environment.status -ne 'applied') { Fail "env apply: $($reapply.environment.status)" }
     Pass 'env remove restaura HKCU\Environment exatamente; env apply reaplica'
 
-    # 6. Desinstalacao completa.
+    # 6. Destino profile: perfis do PowerShell, sem alterar o registro.
+    $null = Invoke-Scope @('env', 'remove')
+    $profileApply = (Invoke-Scope @('env', 'apply', '--windows-env-target', 'profile', '--output', 'json')).Output | ConvertFrom-Json
+    if ($profileApply.environment.status -ne 'applied') { Fail "env apply profile: $($profileApply.environment.status)" }
+    if ($profileApply.environment.script -ne $envScript) { Fail "script: $($profileApply.environment.script)" }
+    if ((Get-UserSnapshot) -ne $originalUser) { Fail "o destino profile alterou o registro: $(Get-UserSnapshot)" }
+    if (-not $profileApply.environment.loginShell.matches) { Fail "PowerShell novo resolve para $($profileApply.environment.loginShell.dotnet)" }
+    $pwshSdks = Invoke-NewPowerShell 'dotnet --list-sdks'
+    if ($pwshSdks.Code -ne 0 -or $pwshSdks.Output -notmatch [regex]::Escape("$sdkVersion [$root\sdk]")) { Fail "pwsh novo: $($pwshSdks.Output)" }
+    $null = Invoke-Scope @('doctor')
+    $coexist = Invoke-Scope @('env', 'apply', '--output', 'json')
+    if (($coexist.Output | ConvertFrom-Json).environment.status -ne 'applied') { Fail 'env apply no registro apos o destino profile' }
+    if ($coexist.Error -notmatch 'env remove') { Fail "aviso de coexistencia ausente: $($coexist.Error)" }
+    Pass 'destino profile configura o PowerShell sem registro; registro reaplicado coexiste'
+
+    # 7. Desinstalacao completa.
     $null = Invoke-Scope @('uninstall', 'runtime', $runtimeVersion)
     $last = (Invoke-Scope @('uninstall', 'sdk', $sdkVersion, '--output', 'json')).Output | ConvertFrom-Json
     if ($last.environment -ne 'removed') { Fail "uninstall nao removeu o ambiente: $($last.environment)" }
@@ -195,7 +244,9 @@ try {
         if (Test-Path -LiteralPath (Join-Path $root $leaf)) { Fail "$leaf permaneceu" }
     }
     if (-not $rootExisted -and (Test-Path -LiteralPath (Join-Path $root 'dotnet.exe'))) { Fail 'dotnet.exe permaneceu' }
-    Pass 'uninstall remove os componentes e restaura o registro exatamente'
+    if ((Get-ProfileSnapshot) -ne $originalProfiles) { Fail 'uninstall nao restaurou os perfis do PowerShell' }
+    if (Test-Path -LiteralPath $envScript) { Fail 'env.ps1 permaneceu' }
+    Pass 'uninstall remove os componentes e restaura o registro e os perfis exatamente'
 }
 finally {
     $machineHandle = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($machineKeyPath, $true)

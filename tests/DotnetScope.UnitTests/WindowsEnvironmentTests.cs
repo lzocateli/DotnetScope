@@ -314,6 +314,35 @@ public sealed class WindowsEnvironmentTests : IDisposable
         return await configurator.ExecuteAsync(configurator.PlanApply(target, policy), _diagnostics, TestContext.Current.CancellationToken);
     }
 
+    [Fact]
+    public async Task Apply_RegistroBloqueadoPorPolitica_FalhaComPrivilegioSemDeixarEstado()
+    {
+        _store.DenyWrites = true;
+        var plan = Configurator.PlanApply(Target, EnvConflictPolicy.Fail);
+
+        var exception = await Assert.ThrowsAsync<DotnetScopeException>(
+            () => Configurator.ExecuteAsync(plan, _diagnostics, TestContext.Current.CancellationToken));
+
+        Assert.Equal(ExitCodes.Privilege, exception.ExitCode);
+        Assert.Contains("Nada foi alterado no registro", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("--windows-env-target profile", exception.Message, StringComparison.Ordinal);
+        Assert.Empty(_store.User);
+        Assert.Null(Configurator.ConfiguredRoot());
+    }
+
+    [Fact]
+    public async Task Apply_RegistroBloqueadoAposApplyAnterior_PreservaEstadoAnterior()
+    {
+        await ApplyAsync(Target);
+        var state = await File.ReadAllBytesAsync(Configurator.StateFile, TestContext.Current.CancellationToken);
+        _store.DenyWrites = true;
+        var plan = Configurator.PlanApply(Target with { TelemetryOptOut = true }, EnvConflictPolicy.Fail);
+
+        await Assert.ThrowsAsync<DotnetScopeException>(() => Configurator.ExecuteAsync(plan, _diagnostics, TestContext.Current.CancellationToken));
+
+        Assert.Equal(state, await File.ReadAllBytesAsync(Configurator.StateFile, TestContext.Current.CancellationToken));
+    }
+
     private sealed class RecordingDiagnostics : IDiagnosticSink
     {
         public List<string> Warnings { get; } = [];

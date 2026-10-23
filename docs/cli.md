@@ -126,7 +126,8 @@ dotnetscope install --from-global-json [caminho] [opções]
 | `--archive` | — | Instala offline a partir de um `.tar.gz` local (`.zip` no Windows), sem consultar o metadata. Exige versão exata e `--sha512`. |
 | `--sha512` | — | SHA-512 esperado do arquivo de `--archive` (128 caracteres hexadecimais). |
 | `--from-global-json` | — | Instala o SDK exigido por um `global.json`. Aceita arquivo ou diretório; sem valor, procura a partir do diretório atual em direção à raiz. |
-| `--configure-env` | `true` | Configura `DOTNET_ROOT` e `PATH` nos perfis ou, no Windows, em `HKCU\Environment` (seção [`env`](#env)); `false` só imprime as instruções. |
+| `--configure-env` | `true` | Configura `DOTNET_ROOT` e `PATH` nos perfis ou, no Windows, em `HKCU\Environment` ou nos perfis do PowerShell (seção [`env`](#env)); `false` só imprime as instruções. |
+| `--windows-env-target` | `registry` | Somente Windows e escopo user: `registry` grava em `HKCU\Environment`; `profile` grava `%LOCALAPPDATA%\dotnetscope\env.ps1` e o carrega nos perfis do PowerShell, sem alterar o registro ([Windows sem registro](#windows-sem-registro---windows-env-target-profile)). Em outro SO ou com `--scope global`, é erro de uso. |
 | `--env-conflict` | `fail` | `fail`, `override` ou `skip` quando terceiros definem outro `DOTNET_ROOT`. |
 | `--telemetry-optout` | `false` | Inclui `DOTNET_CLI_TELEMETRY_OPTOUT=1` no ambiente. |
 | `--output` | `text` | `text` ou `json`. |
@@ -248,15 +249,16 @@ arquivo contém, mas já existiam. `validation` é `null` em `--dry-run`.
 
 ## `env`
 
-Configura `DOTNET_ROOT` e `PATH` nos perfis do usuário no Linux e no macOS e nas
-variáveis do usuário no Windows ([seção Windows](#windows)). O `install` executa
-o mesmo fluxo por padrão (`--configure-env true`).
+Configura `DOTNET_ROOT` e `PATH` nos perfis do usuário no Linux e no macOS e, no
+Windows, nas variáveis do usuário ([seção Windows](#windows)) ou nos perfis do
+PowerShell ([Windows sem registro](#windows-sem-registro---windows-env-target-profile)).
+O `install` executa o mesmo fluxo por padrão (`--configure-env true`).
 
 ```text
 dotnetscope env show   [--shell posix|sh|bash|zsh|fish|pwsh|powershell|cmd] [--install-dir <dir>] [--telemetry-optout]
                        [--scope user|global]
 dotnetscope env apply  [--install-dir <dir>] [--env-conflict fail|override|skip] [--telemetry-optout]
-                       [-y|--yes] [--dry-run] [--output text|json]
+                       [-y|--yes] [--dry-run] [--output text|json] [--windows-env-target registry|profile]
 dotnetscope env remove [--dry-run] [--output text|json] [--scope user|global]
 ```
 
@@ -266,7 +268,9 @@ dotnetscope env remove [--dry-run] [--output text|json] [--scope user|global]
   caminhos com `%`, `!`, `^` ou `"` são recusados (código `2`).
 - `env apply` exige `dotnet` (`dotnet.exe` no Windows) na raiz (código `3` se não houver).
 - `env remove` retira o bloco e os scripts próprios, restaurando os perfis byte
-  a byte. Um perfil que o DotnetScope criou é apagado se ficar vazio.
+  a byte. Um perfil que o DotnetScope criou é apagado se ficar vazio. No
+  Windows, remove a configuração dos dois destinos, registro e perfis do
+  PowerShell.
 
 ### O que é gravado
 
@@ -403,6 +407,82 @@ caso, remova a entrada do `Path` da máquina (exige administrador). O `doctor`
 reporta a mesma situação (`new-terminal`). Terminais já abertos não mudam; use o
 comando de `env show` impresso ao final.
 
+### Windows sem registro (`--windows-env-target profile`)
+
+Em ambientes cuja política impede ou desfaz a escrita em `HKCU\Environment`
+(EDR, Group Policy Preferences que reescrevem o `Path` a cada logon, perfis
+obrigatórios ou VDI), use `--windows-env-target profile` no `install` ou no
+`env apply`. Nada é gravado no registro; ele é apenas lido.
+
+```powershell
+dotnetscope install sdk lts --yes --windows-env-target profile
+dotnetscope env apply --windows-env-target profile
+```
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| `%LOCALAPPDATA%\dotnetscope\env.ps1` | O mesmo script de `env show --shell pwsh`, em UTF-8 com BOM, para que o Windows PowerShell 5.1 leia corretamente caminhos acentuados. |
+| `Documentos\WindowsPowerShell\profile.ps1` | Bloco que carrega o `env.ps1` no Windows PowerShell 5.1. |
+| `Documentos\PowerShell\profile.ps1` | Bloco equivalente no PowerShell 7, quando o `pwsh.exe` está no `Path` ou em `%ProgramFiles%\PowerShell\7`. |
+
+`Documentos` é a pasta conhecida do usuário, inclusive quando redirecionada ou
+sincronizada pelo OneDrive, como o próprio PowerShell a resolve. Os perfis são
+os de todos os hosts do usuário atual (`$PROFILE.CurrentUserAllHosts`). O bloco
+gravado é somente ASCII e não contém caminhos literais:
+
+```powershell
+# >>> dotnetscope >>>
+# Gerenciado por dotnetscope. Use `dotnetscope env remove` para remover.
+$__dotnetscope = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA.TrimEnd('\') + '\dotnetscope\env.ps1' }
+if ($__dotnetscope -and (Test-Path -LiteralPath $__dotnetscope)) { . $__dotnetscope }
+Remove-Variable __dotnetscope -ErrorAction Ignore
+# <<< dotnetscope <<<
+```
+
+Política de execução: antes de gravar, a CLI consulta a política efetiva de
+cada host (`Get-ExecutionPolicy`, sem carregar perfis). Somente `RemoteSigned`,
+`Unrestricted` e `Bypass` carregam um perfil local sem assinatura. Um host com
+`Restricted`, `AllSigned` ou política desconhecida fica de fora, com aviso: o
+perfil dele não é alterado, para não exibir erro a cada terminal aberto. Se
+nenhum host puder carregar o perfil, nada é gravado e a CLI retorna código `6`.
+No Windows 10 e 11, o Windows PowerShell 5.1 usa `Restricted` por padrão,
+enquanto o PowerShell 7 usa `RemoteSigned`. Liberar o 5.1 com
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` grava no registro e pode
+ser bloqueado por GPO; prefira o PowerShell 7.
+
+Garantias e limites:
+
+- Valem as [garantias dos perfis](#garantias): marcadores, idempotência, backup
+  em `%LOCALAPPDATA%\dotnetscope\backups\<host>.profile.ps1.<data>`, gravação
+  atômica, remoção byte a byte e código `6` para perfil não UTF-8 (por exemplo,
+  UTF-16 gravado pelo `Out-File` do 5.1) ou alterado durante a operação. O
+  estado fica em `%LOCALAPPDATA%\dotnetscope\env-profile-state.json`.
+- Conflitos: `DOTNET_ROOT` do usuário no registro com outro valor e atribuições
+  `$env:DOTNET_ROOT = ...` fora do bloco em qualquer `*profile.ps1` dos dois
+  hosts seguem a [tabela de conflitos](#conflitos-com-terceiros). Só valores
+  literais são avaliados; expressões contam como valor diferente.
+- Somente terminais PowerShell recebem o ambiente. O `cmd.exe` não carrega
+  perfis sem o `AutoRun`, que fica no registro; use
+  `dotnetscope env show --shell cmd`. IDEs e aplicativos abertos pelo menu
+  Iniciar não herdam `DOTNET_ROOT` nem o `Path`; abra-os a partir de um terminal
+  PowerShell ou configure o caminho do .NET na própria ferramenta.
+- Verificação: a CLI abre um terminal novo do `pwsh` (ou do 5.1), carregando os
+  perfis, com o `Path` da máquina seguido do `Path` do usuário, e informa em
+  `loginShell` para onde `dotnet` resolve. Como o `env.ps1` acrescenta a raiz no
+  início do `Path`, um `dotnet` do `Path` da máquina não tem precedência.
+- `script` na saída JSON é o caminho do `env.ps1`; `changedFiles` lista o
+  `env.ps1` e os perfis alterados. Para a sessão atual, use `. <env.ps1>`.
+- Os dois destinos podem coexistir: aplicar um quando o outro já está
+  configurado gera aviso. `env remove` e o `uninstall` da última instalação
+  gerenciada na raiz removem os dois.
+- O `doctor` reporta `env-script-missing`, `env-root-missing`,
+  `env-profile-missing`, `powershell-policy` e `new-terminal` para este destino.
+
+Falha ao gravar o registro no destino `registry` (acesso negado por política)
+retorna código `7`, informa o que já foi alterado e sugere
+`--windows-env-target profile`; se nada chegou ao registro, o estado anterior é
+preservado.
+
 `--install-dir` no Windows recusa a raiz de uma unidade, o próprio perfil,
 caminhos de rede (`\\servidor\...`), `%WINDIR%`, `%ProgramFiles%`,
 `%ProgramFiles(x86)%`, `%ProgramData%` e perfis de outros usuários, inclusive
@@ -465,7 +545,8 @@ remoção segue estas regras:
   como o runtime trazido por um SDK, a remoção é recusada mesmo com `--force`.
 - Componente ausente retorna código `3`.
 - Quando não resta instalação gerenciada na raiz e o ambiente aponta para ela, o
-  bloco de `DOTNET_ROOT`/`PATH` sai dos perfis, como em `env remove`. Use
+  bloco de `DOTNET_ROOT`/`PATH` sai dos perfis (no Windows, do registro e dos
+  perfis do PowerShell que apontam para ela), como em `env remove`. Use
   `--keep-env` para mantê-lo.
 
 ```json
@@ -494,6 +575,8 @@ Verifica a raiz do usuário e as raízes do manifesto, cada uma sob o seu lock.
 | `host-validation` | erro | `dotnet --list-sdks`/`--list-runtimes` não lista o componente | — |
 | `root-busy` | aviso | Outra operação está em andamento na raiz | — |
 | `env-script-missing`, `env-profile-missing`, `env-root-missing`, `login-shell` | aviso | Inconsistências do ambiente | — (use `env apply` ou `env remove`) |
+| `env-registry-changed`, `new-terminal` | aviso | Windows: registro diferente do configurado (por exemplo, reescrito por política no logon) ou terminal novo resolvendo outro `dotnet` | — (use `env apply`, ou `--windows-env-target profile` se a política reescreve o registro) |
+| `powershell-policy` | aviso | Windows, destino `profile`: nenhum host com perfil configurado tem política de execução que o carregue | — |
 | `native-dependency` | aviso | Biblioteca nativa ausente | — |
 
 A decisão sobre uma instalação interrompida usa a identidade gravada no journal
@@ -741,7 +824,7 @@ sem o campo, continuam legíveis.
 | `3` | Canal, versão ou artefato inexistente para o RID; plataforma ainda não suportada pelo `install`. |
 | `4` | Falha de rede, metadata indisponível ou malformado, ou ausente no cache com `--offline`. |
 | `5` | Integridade: origem fora da allowlist (metadata, redirect ou arquivo resolvido), SHA-512 divergente ou arquivo recusado na extração. |
-| `6` | Conflito: `doctor` com erros não corrigidos, `uninstall` de componente externo sem `--force` ou de pasta usada por instalação gerenciada, outra operação em andamento, item existente com tipo incompatível, `DOTNET_ROOT` de terceiros com outro valor, bloco malformado, perfil não UTF-8 ou alterado durante a operação. |
-| `7` | Privilégio inadequado: escopo user como root ou `--install-dir` em local do sistema ou de outro usuário. |
+| `6` | Conflito: `doctor` com erros não corrigidos, `uninstall` de componente externo sem `--force` ou de pasta usada por instalação gerenciada, outra operação em andamento, item existente com tipo incompatível, `DOTNET_ROOT` de terceiros com outro valor, bloco malformado, perfil não UTF-8 ou alterado durante a operação, nenhum PowerShell cuja política de execução carregue perfis (`--windows-env-target profile`). |
+| `7` | Privilégio inadequado: escopo user como root, `--install-dir` em local do sistema ou de outro usuário, ou escrita em `HKCU\Environment` negada. |
 | `8` | Instalação gravada, mas a validação falhou com dependências nativas ausentes. |
 | `130` | Cancelado pelo usuário (Ctrl+C ou confirmação recusada). |

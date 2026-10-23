@@ -31,6 +31,7 @@ Não é objetivo substituir gerenciadores de pacotes da distribuição nem o
 | D4 | Instalação global por arquivo, fora do gerenciador de pacotes | Sim, no roadmap (F7) |
 | D5 | Processo e hospedagem | GitHub, sem Spec Kit: Issue → fase deste plano → branch → PR |
 | D6 | Configuração de ambiente | `--configure-env` com padrão `true`; `false` só imprime instruções |
+| D7 | Ambiente do usuário no Windows sem registro | `--windows-env-target registry\|profile`, padrão `registry`; `profile` grava `%LOCALAPPDATA%\dotnetscope\env.ps1` e o bloco nos perfis do PowerShell, sem gravar no registro. Origem: IA assistida; decisão do mantenedor em 2026-10-22, motivada por políticas que bloqueiam ou desfazem a escrita em `HKCU\Environment` |
 
 As decisões acima registram a origem do plano, não uma aprovação automática de
 trabalho futuro. Contribuições seguem [CONTRIBUTING](../.github/CONTRIBUTING.md)
@@ -71,6 +72,7 @@ dotnetscope --version | --help
 | `--scope user\|global` | `user` | Escopo da instalação |
 | `--configure-env true\|false` | `true` | Configura `DOTNET_ROOT` e `PATH` de forma persistente |
 | `--env-conflict fail\|override\|skip` | `fail` | Política quando terceiros já definem valor diferente |
+| `--windows-env-target registry\|profile` | `registry` | Windows, escopo `user`: destino do ambiente (D7) |
 | `--telemetry-optout` | `false` | Adiciona `DOTNET_CLI_TELEMETRY_OPTOUT=1` ao bloco gerenciado |
 | `--install-dir <dir>` | ver D3 e seção 5 | Raiz alternativa da instalação |
 | `--source auto\|archive\|apt\|installer` | `auto` | Estratégia de instalação; `installer` usa `.exe` no Windows e `.pkg` no macOS |
@@ -118,6 +120,7 @@ Os códigos são contrato estável a partir da primeira release.
 | user Linux | `~/.config/dotnetscope/env.sh` + bloco que o carrega em `~/.profile` e `~/.bashrc`; `~/.zprofile`/`~/.zshrc` se zsh existir; `~/.config/fish/conf.d/dotnetscope.fish` se fish existir | só imprime instruções |
 | user macOS | `~/.config/dotnetscope/env.sh` + bloco em `~/.zprofile` (e bash/fish se presentes) | só imprime |
 | user Windows | `HKCU\Environment` + `WM_SETTINGCHANGE`; tipos por variável na [CLI](cli.md#windows) | só imprime |
+| user Windows, `--windows-env-target profile` | `%LOCALAPPDATA%\dotnetscope\env.ps1` + bloco em `profile.ps1` do Windows PowerShell e do PowerShell 7, sem escrita no registro ([CLI](cli.md#windows-sem-registro---windows-env-target-profile)) | só imprime |
 | global Linux | `/etc/profile.d/dotnetscope.sh`; instalação por arquivo também grava `/etc/dotnet/install_location_<arch>` | só imprime |
 | global macOS | ambiente gerenciado pelo `.pkg` oficial, inclusive `/etc/paths.d` | a CLI não edita o ambiente; efeitos do instalador oficial permanecem |
 | global Windows | ambiente e registro gerenciados pelo instalador oficial `.exe` | a CLI não edita o ambiente; efeitos do instalador oficial permanecem |
@@ -143,6 +146,13 @@ Os códigos são contrato estável a partir da primeira release.
 9. Windows nunca usa `setx` (trunca em 1024 caracteres).
 10. `uninstall` remove o bloco quando não restar instalação gerenciada;
     `env remove` remove explicitamente, preservando o restante do arquivo byte a byte.
+11. Windows com `--windows-env-target profile` (D7): o registro é somente lido;
+    o bloco dos perfis do PowerShell é ASCII, sem caminhos literais, e o
+    `env.ps1` tem BOM UTF-8. Hosts cuja política de execução efetiva não carrega
+    perfis locais (`Restricted`, `AllSigned` ou desconhecida) ficam de fora com
+    aviso; sem host utilizável, nada é gravado (código 6). Só terminais
+    PowerShell recebem o ambiente. `env remove` e `uninstall` removem os dois
+    destinos.
 
 Exemplo de bloco no Linux:
 
@@ -321,6 +331,13 @@ runners efêmeros.
 - `--install-dir` normalizado, absoluto e validado.
 - Estado, manifesto, lock e backups com permissões restritas.
 - Logs sem variáveis completas, conteúdo de perfis, tokens ou URLs com credenciais.
+- `--windows-env-target profile` (D7) não grava no registro. A política de
+  execução e a verificação executam o `powershell.exe` de caminho fixo em
+  `%SystemRoot%` e o `pwsh.exe` do `Path` do usuário (a mesma confiança do
+  terminal dele), com `ArgumentList` e `-EncodedCommand`, sem interpolação. A
+  política é lida com `-NoProfile`; a verificação carrega os perfis do próprio
+  usuário, como a do shell de login no Linux e no macOS. Nenhuma fronteira de
+  privilégio nova é criada: tudo executa como o usuário, no escopo `user`.
 - Threat model antes da F7 (escopo global) e revisão de segurança antes da 1.0.
   O da F7 está em [modelo-de-ameacas-f7.md](modelo-de-ameacas-f7.md), aprovado
   pelo revisor humano em 2026-10-21 (decisões D-F7-1 a D-F7-5, sem custo
@@ -338,6 +355,7 @@ runners efêmeros.
 | F4 | `uninstall`, `list --installed`, `doctor [--repair]`, `install --archive <arquivo> --sha512 <hash>` (seção 7), `install --from-global-json [caminho]` (seção 3, com `rollForward`) | reversão completa e origem correta na listagem; instalação offline verificada; versão resolvida conforme `global.json` | concluída (E2E com remoção completa em Ubuntu 24.04 e Fedora 41) |
 | F5 | Publicação AOT multi-RID, `install.sh`/`install.ps1`, release no GitHub | binários rodam sem .NET; checksums publicados | concluída (smoke em Ubuntu 18.04, Rocky 8, Debian 12, Alpine 3.17/3.24 e runners Windows/macOS; [processo de release](release.md)) |
 | F6 | Windows user (zip + registro + `WM_SETTINGCHANGE`) | `dotnet` disponível em novo terminal; reversão do registro | concluída (testes nativos e E2E em `windows-2025`; [referência](cli.md#windows)) |
+| F6b | Windows user sem registro (D7): `--windows-env-target profile`, falha de escrita no registro com código 7 e sugestão do destino `profile`, `doctor` e aviso sem registro no `install.ps1` | registro inalterado; `pwsh` novo resolve `dotnet` pela raiz do usuário; `uninstall` restaura registro e perfis byte a byte | implementada na branch `feat/windows-env-target-profile`; testes unitários em container; testes nativos e E2E em `windows-2025` pendentes de execução no CI |
 | F7a | Global Linux por arquivo (D4): elevação, diretórios confiáveis, estado e cache globais, `/etc/profile.d`, `install_location`, `uninstall`/`env`/`list`/`doctor` globais | R03, R05–R09, R13, R14 (parcial), R17, R18 (`archive`) e R20 do [modelo de ameaças](modelo-de-ameacas-f7.md) com testes negativos; E2E Ubuntu 24.04 e Fedora 41 | concluída |
 | F7b | Global Linux por `apt` (`--source auto\|archive\|apt`) e `--install-deps` | R10–R12, R19 | concluída (E2E apt em Ubuntu 24.04) |
 | F7c | Global Windows: instalador `.exe` com Authenticode (sem `archive`, decisão de 2026-10-21) | R01–R04, R16, R17, R18 | concluída (testes nativos e E2E global em `windows-2025`) |

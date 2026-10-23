@@ -17,13 +17,24 @@ internal sealed class InMemoryEnvironmentStore : IEnvironmentVariableStore
 
     public bool BroadcastResult { get; set; } = true;
 
+    /// <summary>Simula uma política que bloqueia a escrita em <c>HKCU\Environment</c>.</summary>
+    public bool DenyWrites { get; set; }
+
     public string Location => @"HKCU\Environment";
 
     public EnvironmentVariableValue? GetUser(string name) => User.GetValueOrDefault(name);
 
-    public void SetUser(string name, string value, bool expandable) => User[name] = new EnvironmentVariableValue(value, expandable);
+    public void SetUser(string name, string value, bool expandable)
+    {
+        ThrowIfDenied();
+        User[name] = new EnvironmentVariableValue(value, expandable);
+    }
 
-    public void DeleteUser(string name) => User.Remove(name);
+    public void DeleteUser(string name)
+    {
+        ThrowIfDenied();
+        User.Remove(name);
+    }
 
     public string? GetMachine(string name) => Machine.GetValueOrDefault(name);
 
@@ -43,5 +54,13 @@ internal sealed class InMemoryEnvironmentStore : IEnvironmentVariableStore
     {
         Broadcasts++;
         return BroadcastResult;
+    }
+
+    private void ThrowIfDenied()
+    {
+        if (DenyWrites)
+        {
+            throw new UnauthorizedAccessException("Acesso negado.");
+        }
     }
 }
