@@ -99,3 +99,6 @@ jobs:
     with:
       version: ${{ inputs.tag }}
       submit: true
+    # Em reutilizáveis aninhados (gw-release -> post-release -> winget), cada chamada precisa repassar
+    # os secrets; sem isso, o WINGET_CREATE_GITHUB_TOKEN do Environment winget chega vazio ao job.
+    secrets: inherit
