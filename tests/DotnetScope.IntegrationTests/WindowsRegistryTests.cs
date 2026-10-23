@@ -31,6 +31,35 @@ public sealed class WindowsRegistryTests : IDisposable
     }
 
     [Fact]
+    public void PowerShellHostProbe_DetectaWindowsPowerShellComPoliticaEfetiva()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Somente Windows.");
+        var probe = new PowerShellHostProbe(_directory, new RegistryEnvironmentStore(_subKey, broadcast: false));
+
+        var hosts = probe.Detect();
+
+        var windowsPowerShell = Assert.Single(hosts, h => h.Name == "powershell");
+        Assert.True(File.Exists(windowsPowerShell.Executable));
+        Assert.Equal(Path.Combine(_directory, "WindowsPowerShell", "profile.ps1"), windowsPowerShell.Profile);
+        Assert.NotNull(windowsPowerShell.ExecutionPolicy);
+        Assert.All(hosts, h => Assert.True(h.ExecutionPolicy?.All(char.IsAsciiLetter), h.Name));
+    }
+
+    [Fact]
+    public async Task PowerShellHostProbe_VerificaTerminalNovoSemAlterarPerfis()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Somente Windows.");
+        var probe = new PowerShellHostProbe(_directory, new RegistryEnvironmentStore(_subKey, broadcast: false));
+        var host = probe.Detect().First(h => h.Name == "powershell");
+
+        var result = await probe.VerifyAsync(host, @"C:\dotnetscope-inexistente", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result);
+        Assert.Equal("powershell", result.Shell);
+        Assert.False(result.Matches);
+    }
+
+    [Fact]
     public void Store_PreservaValorBrutoETipo()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Somente Windows.");

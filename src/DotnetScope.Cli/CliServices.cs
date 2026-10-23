@@ -1,6 +1,7 @@
 using DotnetScope.Core;
 using DotnetScope.Core.Installation;
 using DotnetScope.Core.Releases;
+using DotnetScope.Core.UserEnvironment;
 using DotnetScope.Infrastructure.Installation;
 using DotnetScope.Infrastructure.Metadata;
 using DotnetScope.Infrastructure.Platform;
@@ -35,6 +36,10 @@ internal sealed record CliServices(
 
     /// <summary>Configurador do registro do Windows (substituído por um store em memória nos testes).</summary>
     public Func<string, WindowsEnvironmentConfigurator> CreateWindowsEnvironment { get; init; } = WindowsEnvironmentConfigurator.CreateDefault;
+
+    /// <summary>Configurador dos perfis do PowerShell no Windows, sem registro (substituído nos testes).</summary>
+    public Func<string, WindowsProfileEnvironmentConfigurator> CreateWindowsProfileEnvironment { get; init; } =
+        WindowsProfileEnvironmentConfigurator.CreateDefault;
 
     public Func<InstallationManifestStore> CreateManifestStore { get; init; } = InstallationManifestStore.CreateDefault;
 
@@ -114,8 +119,17 @@ internal sealed record CliServices(
     /// <summary>Indica se o RID alvo é Windows (registro, zip e <c>dotnet.exe</c>).</summary>
     public bool IsWindowsTarget => DetectRid().StartsWith("win-", StringComparison.Ordinal);
 
-    public IUserEnvironmentConfigurator CreateEnvironmentConfigurator(string home) =>
-        IsWindowsTarget ? CreateWindowsEnvironment(home) : new UnixEnvironmentConfigurator(CreateEnvironmentLayout(home));
+    public IUserEnvironmentConfigurator CreateEnvironmentConfigurator(
+        string home, WindowsEnvironmentTarget windowsTarget = WindowsEnvironmentTarget.Registry) =>
+        !IsWindowsTarget ? new UnixEnvironmentConfigurator(CreateEnvironmentLayout(home))
+            : windowsTarget == WindowsEnvironmentTarget.Profile ? CreateWindowsProfileEnvironment(home)
+            : CreateWindowsEnvironment(home);
+
+    /// <summary>Todos os destinos que podem guardar o ambiente do usuário (remoção, desinstalação e diagnóstico).</summary>
+    public IReadOnlyList<IUserEnvironmentConfigurator> CreateEnvironmentConfigurators(string home) =>
+        IsWindowsTarget
+            ? [CreateWindowsEnvironment(home), CreateWindowsProfileEnvironment(home)]
+            : [new UnixEnvironmentConfigurator(CreateEnvironmentLayout(home))];
 
     public static CliServices CreateDefault(TextWriter output, TextWriter error) =>
         new(output, error, ReleaseMetadataClient.CreateOfficial, PlatformDetector.DetectRid);

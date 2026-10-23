@@ -25,6 +25,8 @@ public sealed class InstallCommandTests
     [InlineData(ExitCodes.Usage, "install", "runtime", "10.0.4xx")]
     [InlineData(ExitCodes.Privilege, "install", "sdk", "10.0.402", "--scope", "global")]
     [InlineData(ExitCodes.Usage, "install", "sdk", "10.0.402", "--scope", "system")]
+    [InlineData(ExitCodes.Usage, "install", "sdk", "10.0.402", "--windows-env-target", "profile")]
+    [InlineData(ExitCodes.Usage, "install", "sdk", "10.0.402", "--windows-env-target", "hklm")]
     [InlineData(ExitCodes.Usage, "install", "sdk", "11.0.100-rc.2.26504.105")]
     [InlineData(ExitCodes.Usage, "install", "sdk", "10.0.402", "--install-dir", "relativo/dotnet")]
     [InlineData(ExitCodes.Usage, "install", "sdk", "10.0.402", "--sha512", "abc")]
@@ -143,6 +145,140 @@ public sealed class InstallCommandTests
     }
 
     [Fact]
+    public async Task Install_Windows_TargetProfile_GravaPerfisSemTocarNoRegistro()
+    {
+        var store = new InMemoryEnvironmentStore();
+
+        var result = await RunAsync(
+            ["install", "sdk", "10.0.402", "--install-dir", WindowsRoot, "--windows-env-target", "profile", "--output", "json"],
+            rid: "win-x64",
+            windowsStore: store);
+
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        using var json = JsonDocument.Parse(result.Output);
+        var environment = json.RootElement.GetProperty("environment");
+        Assert.Equal("applied", environment.GetProperty("status").GetString());
+        Assert.EndsWith("env.ps1", environment.GetProperty("script").GetString(), StringComparison.Ordinal);
+        var changed = environment.GetProperty("changedFiles").EnumerateArray().Select(e => e.GetString()!).ToList();
+        Assert.Contains(changed, f => f.EndsWith(Path.Combine("WindowsPowerShell", "profile.ps1"), StringComparison.Ordinal));
+        Assert.Contains(changed, f => f.EndsWith(Path.Combine("PowerShell", "profile.ps1"), StringComparison.Ordinal));
+        Assert.Empty(store.User);
+        Assert.Equal(0, store.Broadcasts);
+    }
+
+    [Fact]
+    public async Task Install_Windows_TargetProfile_TextoExplicaLimiteEUsoNaSessao()
+    {
+        var result = await RunAsync(
+            ["install", "sdk", "10.0.402", "--install-dir", WindowsRoot, "--windows-env-target", "profile"], rid: "win-x64", windowsStore: new());
+
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        Assert.Contains("Terminais PowerShell novos carregam o ambiente pelo perfil", result.Output, StringComparison.Ordinal);
+        Assert.Matches(@"Para usar nesta sessão: \. '.*env\.ps1'", result.Output);
+    }
+
+    [Fact]
+    public async Task Install_Windows_TargetProfile_PoliticaBloqueiaTodos_FalhaAntesDeInstalar()
+    {
+        var result = await RunAsync(
+            ["install", "sdk", "10.0.402", "--install-dir", WindowsRoot, "--windows-env-target", "profile"],
+            rid: "win-x64",
+            windowsStore: new(),
+            powerShellPolicy: "Restricted");
+
+        Assert.Equal(ExitCodes.Conflict, result.ExitCode);
+        Assert.Equal(0, result.Installer.Calls);
+        Assert.Contains("Restricted", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Install_Windows_TargetProfileComEscopoGlobal_ErroDeUso()
+    {
+        var result = await RunAsync(
+            ["install", "sdk", "10.0.402", "--scope", "global", "--windows-env-target", "profile"], rid: "win-x64", windowsStore: new());
+
+        Assert.Equal(ExitCodes.Usage, result.ExitCode);
+        Assert.Equal(0, result.Installer.Calls);
+    }
+
+    [Fact]
+    public async Task Install_Windows_RegistroBloqueado_SugereTargetProfile()
+    {
+        var store = new InMemoryEnvironmentStore { DenyWrites = true };
+
+        var result = await RunAsync(["install", "sdk", "10.0.402", "--install-dir", WindowsRoot], rid: "win-x64", windowsStore: store);
+
+        Assert.Equal(ExitCodes.Privilege, result.ExitCode);
+        Assert.Contains("--windows-env-target profile", result.Error, StringComparison.Ordinal);
+        Assert.Empty(store.User);
+    }
+
+    [Fact]
+    public async Task EnvRemove_Windows_RemoveRegistroEPerfisEAvisaCoexistencia()
+    {
+        var store = new InMemoryEnvironmentStore();
+        var state = Path.Combine(Path.GetTempPath(), "dotnetscope-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            await RunAsync(["install", "sdk", "10.0.402", "--install-dir", WindowsRoot], rid: "win-x64", windowsStore: store, stateHome: state);
+            var profile = await RunAsync(
+                ["install", "sdk", "10.0.402", "--install-dir", WindowsRoot, "--windows-env-target", "profile"],
+                rid: "win-x64",
+                windowsStore: store,
+                stateHome: state);
+
+            var removed = await RunAsync(["env", "remove", "--output", "json"], rid: "win-x64", windowsStore: store, stateHome: state);
+
+            Assert.Equal(ExitCodes.Success, profile.ExitCode);
+            Assert.Contains("já configurou", profile.Error, StringComparison.Ordinal);
+            Assert.Equal(ExitCodes.Success, removed.ExitCode);
+            using var json = JsonDocument.Parse(removed.Output);
+            var changed = json.RootElement.GetProperty("environment").GetProperty("changedFiles").EnumerateArray().Select(e => e.GetString()!).ToList();
+            Assert.Contains(@"HKCU\Environment\Path", changed);
+            Assert.Contains(changed, f => f.EndsWith("env.ps1", StringComparison.Ordinal));
+            Assert.False(store.User.ContainsKey("Path"));
+            Assert.False(File.Exists(Path.Combine(state, "dotnetscope", "env.ps1")));
+        }
+        finally
+        {
+            if (Directory.Exists(state))
+            {
+                Directory.Delete(state, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task EnvRemoveEDoctor_Windows_SoRegistroComPerfilUtf16DeTerceiro_FuncionamSemErro()
+    {
+        var store = new InMemoryEnvironmentStore();
+        var state = Path.Combine(Path.GetTempPath(), "dotnetscope-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var profile = Path.Combine(state, "Documents", "WindowsPowerShell", "profile.ps1");
+            Directory.CreateDirectory(Path.GetDirectoryName(profile)!);
+            await File.WriteAllTextAsync(profile, "Set-Alias ll ls\r\n", System.Text.Encoding.Unicode, TestContext.Current.CancellationToken);
+            await RunAsync(["install", "sdk", "10.0.402", "--install-dir", WindowsRoot], rid: "win-x64", windowsStore: store, stateHome: state);
+            var original = await File.ReadAllBytesAsync(profile, TestContext.Current.CancellationToken);
+
+            var doctor = await RunAsync(["doctor", "--output", "json"], rid: "win-x64", windowsStore: store, stateHome: state);
+            var removed = await RunAsync(["env", "remove"], rid: "win-x64", windowsStore: store, stateHome: state);
+
+            Assert.DoesNotContain("UTF-8", doctor.Error, StringComparison.Ordinal);
+            Assert.Equal(ExitCodes.Success, removed.ExitCode);
+            Assert.False(store.User.ContainsKey("Path"));
+            Assert.Equal(original, await File.ReadAllBytesAsync(profile, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            if (Directory.Exists(state))
+            {
+                Directory.Delete(state, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task EnvShow_Windows_PadraoPowerShell()
     {
         var result = await RunAsync(["env", "show", "--install-dir", WindowsRoot], rid: "win-x64", windowsStore: new());
@@ -243,12 +379,14 @@ public sealed class InstallCommandTests
         bool isRoot = false,
         IReadOnlyList<string>? missing = null,
         string? home = null,
-        InMemoryEnvironmentStore? windowsStore = null)
+        InMemoryEnvironmentStore? windowsStore = null,
+        string? powerShellPolicy = "RemoteSigned",
+        string? stateHome = null)
     {
         using var output = new StringWriter();
         using var error = new StringWriter();
         var installer = new FakeInstaller();
-        var profileHome = Path.Combine(Path.GetTempPath(), "dotnetscope-tests", Guid.NewGuid().ToString("N"));
+        var profileHome = stateHome ?? Path.Combine(Path.GetTempPath(), "dotnetscope-tests", Guid.NewGuid().ToString("N"));
         var services = new CliServices(output, error, (_, _) => new FixtureMetadataSource(), () => rid)
         {
             CreateInstaller = (_, _) => installer,
@@ -268,6 +406,11 @@ public sealed class InstallCommandTests
                 windowsStore ?? throw new InvalidOperationException("Informe windowsStore para RIDs Windows."),
                 Path.Combine(profileHome, "dotnetscope"),
                 h),
+            CreateWindowsProfileEnvironment = h => new WindowsProfileEnvironmentConfigurator(
+                Path.Combine(profileHome, "dotnetscope"),
+                FakePowerShellProbe.Create(Path.Combine(profileHome, "Documents"), powerShellPolicy, powerShellPolicy),
+                windowsStore ?? throw new InvalidOperationException("Informe windowsStore para RIDs Windows."),
+                h),
         };
 
         try
@@ -277,7 +420,7 @@ public sealed class InstallCommandTests
         }
         finally
         {
-            if (Directory.Exists(profileHome))
+            if (stateHome is null && Directory.Exists(profileHome))
             {
                 Directory.Delete(profileHome, recursive: true);
             }

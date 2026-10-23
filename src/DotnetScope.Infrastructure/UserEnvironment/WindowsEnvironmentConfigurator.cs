@@ -154,6 +154,7 @@ public sealed class WindowsEnvironmentConfigurator(IEnvironmentVariableStore sto
         }
 
         var state = LoadState();
+        var previousState = File.Exists(StateFile) ? await File.ReadAllBytesAsync(StateFile, cancellationToken).ConfigureAwait(false) : null;
         if (plan.Target is not null)
         {
             // O estado é gravado antes do registro: uma falha no meio nunca deixa entradas acrescentadas sem dono.
@@ -163,13 +164,31 @@ public sealed class WindowsEnvironmentConfigurator(IEnvironmentVariableStore sto
         var changed = new List<string>();
         foreach (var change in plan.ChangedVariables)
         {
-            if (change.NewValue is null)
+            try
             {
-                Store.DeleteUser(change.Name);
+                if (change.NewValue is null)
+                {
+                    Store.DeleteUser(change.Name);
+                }
+                else
+                {
+                    Store.SetUser(change.Name, change.NewValue, change.NewExpandable);
+                }
             }
-            else
+            catch (Exception exception) when (exception is UnauthorizedAccessException or System.Security.SecurityException or IOException)
             {
-                Store.SetUser(change.Name, change.NewValue, change.NewExpandable);
+                if (changed.Count == 0 && plan.Target is not null)
+                {
+                    // Nada chegou ao registro: o estado volta ao que era para não reivindicar entradas inexistentes.
+                    RestoreState(previousState);
+                }
+
+                throw new DotnetScopeException(
+                    ExitCodes.Privilege,
+                    $"Não foi possível gravar {change.Display} ({exception.Message}). "
+                    + (changed.Count == 0 ? "Nada foi alterado no registro. " : $"Já alterados: {string.Join(", ", changed)}. ")
+                    + "Se uma política bloqueia o registro, use --windows-env-target profile ou --configure-env false.",
+                    exception);
             }
 
             changed.Add(change.Display);
@@ -301,6 +320,19 @@ public sealed class WindowsEnvironmentConfigurator(IEnvironmentVariableStore sto
         CreateDirectory(stateDirectory);
         var temporary = StateFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
         File.WriteAllText(temporary, JsonSerializer.Serialize(state, EnvironmentJsonContext.Default.WindowsEnvironmentState));
+        File.Move(temporary, StateFile, overwrite: true);
+    }
+
+    private void RestoreState(byte[]? previous)
+    {
+        if (previous is null)
+        {
+            File.Delete(StateFile);
+            return;
+        }
+
+        var temporary = StateFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        File.WriteAllBytes(temporary, previous);
         File.Move(temporary, StateFile, overwrite: true);
     }
 

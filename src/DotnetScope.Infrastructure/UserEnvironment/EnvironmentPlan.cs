@@ -39,9 +39,13 @@ public sealed record EnvironmentPlan(
     IReadOnlyList<OwnedFileChange> Files,
     IReadOnlyList<ThirdPartyAssignment> Conflicts,
     bool Skipped,
-    IReadOnlyList<VariableChange>? Variables = null)
+    IReadOnlyList<VariableChange>? Variables = null,
+    IReadOnlyList<string>? Notices = null)
 {
     public IReadOnlyList<VariableChange> ChangedVariables => Variables ?? [];
+
+    /// <summary>Avisos do planejamento, por exemplo um host do PowerShell cuja política impede carregar perfis.</summary>
+    public IReadOnlyList<string> Warnings => Notices ?? [];
 
     public bool HasChanges => Profiles.Count > 0 || Files.Count > 0 || ChangedVariables.Count > 0;
 

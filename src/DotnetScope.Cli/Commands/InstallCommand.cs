@@ -51,6 +51,7 @@ internal static class InstallCommand
         };
         var envConflict = EnvCommand.ConflictOption();
         var telemetry = EnvCommand.TelemetryOption();
+        var windowsTarget = EnvCommand.WindowsTargetOption();
         var archive = new Option<string?>("--archive")
         {
             Description = "Instala a partir de um arquivo local (.tar.gz; .zip no Windows), sem consultar o metadata (exige versão exata e --sha512)",
@@ -83,7 +84,7 @@ internal static class InstallCommand
         var command = new Command("install", "Instala um SDK ou runtime .NET a partir do arquivo oficial verificado por SHA-512")
         {
             component, version, scope, installDir, prerelease, offline, dryRun, yes, allowRoot, configureEnv, envConflict, telemetry,
-            archive, sha512, fromGlobalJson, output, source, installDeps,
+            archive, sha512, fromGlobalJson, output, source, installDeps, windowsTarget,
         };
 
         command.SetAction((parseResult, cancellationToken) => CliApplication.ExecuteAsync(
@@ -111,7 +112,8 @@ internal static class InstallCommand
                     parseResult.GetResult(fromGlobalJson) is not null,
                     parseResult.GetValue(fromGlobalJson),
                     parseResult.GetValue(source)!,
-                    parseResult.GetValue(installDeps)),
+                    parseResult.GetValue(installDeps),
+                    parseResult.GetValue(windowsTarget)),
                 ct),
             cancellationToken));
 
@@ -126,6 +128,7 @@ internal static class InstallCommand
     {
         var rid = services.DetectRid();
         ValidateSourceOptions(options);
+        var windowsTarget = EnvCommand.ParseWindowsTarget(services, options.WindowsEnvTarget, options.Scope == InstallScope.Global);
         var home = services.HomeDirectory();
         string root;
         GlobalLayout? global = null;
@@ -231,8 +234,17 @@ internal static class InstallCommand
         EnvironmentPlan? environmentPlan = null;
         if (options.ConfigureEnv && !packageManaged)
         {
-            configurator = global is null ? services.CreateEnvironmentConfigurator(home) : services.CreateSystemEnvironment(global);
-            environmentPlan = EnvironmentSetup.Plan(services, configurator, target, options.EnvConflict, options.Yes, options.DryRun);
+            if (global is null)
+            {
+                configurator = services.CreateEnvironmentConfigurator(home, windowsTarget);
+                EnvironmentSetup.WarnOtherWindowsTarget(services, home, windowsTarget, diagnostics);
+            }
+            else
+            {
+                configurator = services.CreateSystemEnvironment(global);
+            }
+
+            environmentPlan = EnvironmentSetup.Plan(services, configurator, target, options.EnvConflict, options.Yes, options.DryRun, diagnostics);
         }
 
         if (options.DryRun)
@@ -614,5 +626,6 @@ internal static class InstallCommand
         bool FromGlobalJson,
         string? GlobalJsonPath,
         string Source,
-        bool InstallDeps);
+        bool InstallDeps,
+        string? WindowsEnvTarget);
 }
