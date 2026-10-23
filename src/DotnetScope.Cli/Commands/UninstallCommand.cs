@@ -38,7 +38,7 @@ internal static class UninstallCommand
                 var home = services.HomeDirectory();
                 string root;
                 InstallationManifestStore manifest;
-                IUserEnvironmentConfigurator configurator;
+                IReadOnlyList<IUserEnvironmentConfigurator> configurators;
                 if (parseResult.GetValue(scope) == "global" && GlobalScope.UsesOfficialInstaller(services.DetectRid()))
                 {
                     if (parseResult.GetValue(installDir) is not null)
@@ -58,7 +58,7 @@ internal static class UninstallCommand
                     GlobalScope.EnsureTrustedState(services, layout);
                     root = globalRoot;
                     manifest = new InstallationManifestStore(layout.ManifestFile);
-                    configurator = services.CreateSystemEnvironment(layout);
+                    configurators = [services.CreateSystemEnvironment(layout)];
                     // Pacotes apt não têm raiz escolhida pelo usuário: só entram quando --install-dir não foi informado.
                     if (parseResult.GetValue(installDir) is null
                         && await FindAptRecordAsync(services, manifest, request.Component, request.Version, ct).ConfigureAwait(false) is { } aptRecord)
@@ -76,7 +76,7 @@ internal static class UninstallCommand
 
                     root = InstallLocations.ValidateUserRoot(parseResult.GetValue(installDir) ?? InstallLocations.DefaultUserRoot(home), home);
                     manifest = services.CreateManifestStore();
-                    configurator = services.CreateEnvironmentConfigurator(home);
+                    configurators = services.CreateEnvironmentConfigurators(home);
                 }
 
                 var dry = parseResult.GetValue(dryRun);
@@ -88,10 +88,14 @@ internal static class UninstallCommand
                 if (!dry && !parseResult.GetValue(keepEnv) && !manifest.Read().Any(r => InstallLocations.SameRoot(r.Root, root)))
                 {
                     // Seção 4.3, regra 10: sem instalações gerenciadas na raiz, o bloco de ambiente que aponta para ela sai.
-                    if (configurator.ConfiguredRoot() is { } configured && InstallLocations.SameRoot(configured, root))
+                    // No Windows, o registro e os perfis do PowerShell são verificados separadamente.
+                    foreach (var candidate in configurators)
                     {
-                        await configurator.ExecuteAsync(configurator.PlanRemove(), diagnostics, ct).ConfigureAwait(false);
-                        environment = "removed";
+                        if (candidate.ConfiguredRoot() is { } configured && InstallLocations.SameRoot(configured, root))
+                        {
+                            await candidate.ExecuteAsync(candidate.PlanRemove(), diagnostics, ct).ConfigureAwait(false);
+                            environment = "removed";
+                        }
                     }
                 }
 

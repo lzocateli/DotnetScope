@@ -9,7 +9,9 @@ anterior somente depois que a nova executa. Compativel com Windows PowerShell
 5.1 e PowerShell 7.
 
 O instalador nao altera o PATH nem o registro: se o diretorio de destino nao
-estiver no PATH, ele mostra o comando a executar.
+estiver no PATH, ele mostra os comandos a executar, um que grava o PATH do
+usuario no registro e outro, para ambientes que bloqueiam o registro, que so
+acrescenta o diretorio ao perfil do PowerShell.
 
 .PARAMETER Version
 Versao a instalar (X.Y.Z ou X.Y.Z-sufixo). Padrao: latest.
@@ -258,6 +260,20 @@ try {
         Write-Output ''
         Write-Output "Aviso: $InstallDir nao esta no PATH. Para adicionar ao PATH do usuario:"
         Write-Output "  [Environment]::SetEnvironmentVariable('Path', '$InstallDir;' + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User')"
+        # A linha do perfil usa $env:LOCALAPPDATA quando possivel: fica ASCII mesmo com nome de usuario acentuado,
+        # que o Add-Content do Windows PowerShell 5.1 gravaria em ANSI.
+        $pathExpression = "'$($InstallDir.Replace("'", "''"))'"
+        if (-not [string]::IsNullOrEmpty($env:LOCALAPPDATA)) {
+            $localPrefix = $env:LOCALAPPDATA.TrimEnd('\') + '\'
+            if ($InstallDir.StartsWith($localPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                $relative = $InstallDir.Substring($localPrefix.Length)
+                $pathExpression = "(`$env:LOCALAPPDATA + '\$($relative.Replace("'", "''"))')"
+            }
+        }
+        $profileLine = "`$env:PATH = $pathExpression + ';' + `$env:PATH"
+        Write-Output 'Sem alterar o registro (somente terminais PowerShell):'
+        Write-Output '  New-Item -ItemType Directory -Force -Path (Split-Path $PROFILE.CurrentUserAllHosts) | Out-Null'
+        Write-Output "  Add-Content -LiteralPath `$PROFILE.CurrentUserAllHosts -Value @('', '$($profileLine.Replace("'", "''"))')"
     }
 
     Write-Output ''

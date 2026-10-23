@@ -175,4 +175,38 @@ public sealed class UserEnvironmentTests
         Assert.Equal(3, assignment.Line);
         Assert.Equal("/home/u/.dotnet", assignment.ResolvedValue);
     }
+
+    [Fact]
+    public void PowerShellProfileBlock_SomenteAsciiSemCaminhoLiteralEComMarcadores()
+    {
+        var block = EnvironmentScripts.PowerShellProfileBlock();
+
+        Assert.Equal(EnvironmentScripts.BeginMarker, block[0]);
+        Assert.Equal(EnvironmentScripts.EndMarker, block[^1]);
+        Assert.All(block, line => Assert.True(line.All(char.IsAscii), line));
+        Assert.Contains(block, line => line.Contains("$env:LOCALAPPDATA.TrimEnd('\\') + '\\dotnetscope\\env.ps1'", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("$env:DOTNET_ROOT = 'D:\\dotnet'", "D:\\dotnet")]
+    [InlineData("  $Env:dotnet_root='D:\\dotnet\\' # comentário", "D:\\dotnet")]
+    [InlineData("$env:DOTNET_ROOT = \"D:\\dotnet\";", "D:\\dotnet")]
+    [InlineData("$env:DOTNET_ROOT = \"$HOME\\dotnet\"", null)]
+    [InlineData("$env:DOTNET_ROOT = Join-Path $HOME dotnet", null)]
+    [InlineData("$env:DOTNET_ROOT = 'o''brien'", null)]
+    public void FindPowerShellAssignments_ResolveSomenteLiterais(string line, string? expected)
+    {
+        var assignment = Assert.Single(ThirdPartyEnvironment.FindPowerShellAssignments("perfil.ps1", "# perfil\r\n" + line + "\r\n"));
+
+        Assert.Equal(2, assignment.Line);
+        Assert.Equal(expected, assignment.ResolvedValue);
+    }
+
+    [Fact]
+    public void FindPowerShellAssignments_IgnoraOBlocoProprioEOutrasVariaveis()
+    {
+        var content = string.Join('\n', EnvironmentScripts.PowerShellProfileBlock()) + "\n$env:DOTNET_ROOT_X64 = 'C:\\x'\n$env:PATH = 'C:\\y'\n";
+
+        Assert.Empty(ThirdPartyEnvironment.FindPowerShellAssignments("perfil.ps1", content));
+    }
 }

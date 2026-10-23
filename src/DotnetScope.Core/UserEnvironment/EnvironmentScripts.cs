@@ -139,6 +139,20 @@ public static class EnvironmentScripts
     ];
 
     /// <summary>
+    /// Linhas do bloco que carrega <c>%LOCALAPPDATA%\dotnetscope\env.ps1</c> nos perfis do PowerShell (Windows). O bloco é
+    /// somente ASCII e não contém caminhos literais: o Windows PowerShell 5.1 lê perfis sem BOM na página de código ANSI.
+    /// </summary>
+    public static IReadOnlyList<string> PowerShellProfileBlock() =>
+    [
+        BeginMarker,
+        "# Gerenciado por dotnetscope. Use `dotnetscope env remove` para remover.",
+        "$__dotnetscope = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA.TrimEnd('\\') + '\\dotnetscope\\env.ps1' }",
+        "if ($__dotnetscope -and (Test-Path -LiteralPath $__dotnetscope)) { . $__dotnetscope }",
+        "Remove-Variable __dotnetscope -ErrorAction Ignore",
+        EndMarker,
+    ];
+
+    /// <summary>
     /// Expressão shell do caminho do script: relativa a <c>"$HOME"</c> quando está no home (portável em dotfiles),
     /// senão o caminho absoluto entre aspas simples.
     /// </summary>

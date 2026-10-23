@@ -13,7 +13,7 @@ internal static class EnvCommand
 {
     public static Command Build(CliServices services)
     {
-        var command = new Command("env", "Mostra, aplica ou remove DOTNET_ROOT e PATH nos perfis do usuário (registro no Windows)");
+        var command = new Command("env", "Mostra, aplica ou remove DOTNET_ROOT e PATH nos perfis do usuário (registro ou perfis do PowerShell no Windows)");
         command.Subcommands.Add(BuildShow(services));
         command.Subcommands.Add(BuildApply(services));
         command.Subcommands.Add(BuildRemove(services));
@@ -79,11 +79,12 @@ internal static class EnvCommand
         var dryRun = new Option<bool>("--dry-run") { Description = "Mostra os perfis ou variáveis que seriam alterados sem gravar" };
         var output = OutputOption();
         var scope = ScopeOption();
+        var windowsTarget = WindowsTargetOption();
         var command = new Command(
             "apply",
-            "Configura DOTNET_ROOT e PATH nos perfis do usuário (bloco gerenciado) ou em HKCU\\Environment no Windows; idempotente")
+            "Configura DOTNET_ROOT e PATH nos perfis do usuário (bloco gerenciado) ou, no Windows, em HKCU\\Environment ou nos perfis do PowerShell; idempotente")
         {
-            installDir, conflict, telemetry, yes, dryRun, output, scope,
+            installDir, conflict, telemetry, yes, dryRun, output, scope, windowsTarget,
         };
         command.SetAction((parseResult, cancellationToken) => CliApplication.ExecuteAsync(
             services,
@@ -93,7 +94,9 @@ internal static class EnvCommand
                 EnvironmentTarget target;
                 string home;
                 IUserEnvironmentConfigurator configurator;
-                if (parseResult.GetValue(scope) == "global")
+                var global = parseResult.GetValue(scope) == "global";
+                var windows = ParseWindowsTarget(services, parseResult.GetValue(windowsTarget), global);
+                if (global)
                 {
                     home = services.HomeDirectory();
                     var (layout, globalRoot) = GlobalScope.Prepare(services, services.DetectRid(), parseResult.GetValue(installDir));
@@ -106,11 +109,18 @@ internal static class EnvCommand
                 else
                 {
                     (target, home) = ResolveTarget(services, parseResult.GetValue(installDir), parseResult.GetValue(telemetry), requireHost: true);
-                    configurator = services.CreateEnvironmentConfigurator(home);
+                    configurator = services.CreateEnvironmentConfigurator(home, windows);
+                    EnvironmentSetup.WarnOtherWindowsTarget(services, home, windows, diagnostics);
                 }
 
                 var plan = EnvironmentSetup.Plan(
-                    services, configurator, target, ParsePolicy(parseResult.GetValue(conflict)), parseResult.GetValue(yes), parseResult.GetValue(dryRun));
+                    services,
+                    configurator,
+                    target,
+                    ParsePolicy(parseResult.GetValue(conflict)),
+                    parseResult.GetValue(yes),
+                    parseResult.GetValue(dryRun),
+                    diagnostics);
                 EnvironmentOutcome outcome;
                 if (parseResult.GetValue(dryRun))
                 {
@@ -142,7 +152,7 @@ internal static class EnvCommand
         var scope = ScopeOption();
         var command = new Command(
             "remove",
-            "Remove o bloco do dotnetscope dos perfis (ou o que ele gravou no registro do Windows), preservando o restante")
+            "Remove o bloco do dotnetscope dos perfis (no Windows, também o que ele gravou no registro), preservando o restante")
         {
             dryRun, output, scope,
         };
@@ -153,30 +163,35 @@ internal static class EnvCommand
             {
                 var home = services.HomeDirectory();
                 var global = parseResult.GetValue(scope) == "global";
-                IUserEnvironmentConfigurator configurator;
+                IReadOnlyList<IUserEnvironmentConfigurator> configurators;
                 var targetRoot = InstallLocations.DefaultUserRoot(home);
                 if (global)
                 {
                     var (layout, globalRoot) = GlobalScope.Prepare(services, services.DetectRid(), installDir: null);
                     GlobalScope.EnsureTrustedState(services, layout);
-                    configurator = services.CreateSystemEnvironment(layout);
-                    targetRoot = configurator.ConfiguredRoot() ?? globalRoot;
+                    var system = services.CreateSystemEnvironment(layout);
+                    targetRoot = system.ConfiguredRoot() ?? globalRoot;
+                    configurators = [system];
                 }
                 else
                 {
-                    configurator = services.CreateEnvironmentConfigurator(home);
+                    // No Windows, remove tanto o registro quanto os perfis do PowerShell, qualquer que tenha sido o destino.
+                    configurators = services.CreateEnvironmentConfigurators(home);
                 }
 
-                var plan = configurator.PlanRemove();
-                var changed = plan.ChangedTargets;
-                IReadOnlyList<string> backups = [];
+                var plans = configurators.Select(c => (Configurator: c, Plan: c.PlanRemove())).ToList();
+                var changed = plans.SelectMany(p => p.Plan.ChangedTargets).ToList();
+                var backups = new List<string>();
                 if (!parseResult.GetValue(dryRun))
                 {
-                    var result = await configurator.ExecuteAsync(plan, diagnostics, ct).ConfigureAwait(false);
-                    backups = result.Backups;
+                    foreach (var (configurator, plan) in plans)
+                    {
+                        var result = await configurator.ExecuteAsync(plan, diagnostics, ct).ConfigureAwait(false);
+                        backups.AddRange(result.Backups);
+                    }
                 }
 
-                var status = !plan.HasChanges ? "unchanged" : parseResult.GetValue(dryRun) ? "planned" : "removed";
+                var status = !plans.Any(p => p.Plan.HasChanges) ? "unchanged" : parseResult.GetValue(dryRun) ? "planned" : "removed";
                 var target = global ? EnvironmentSetup.CreateGlobalTarget(targetRoot, false) : EnvironmentSetup.CreateTarget(targetRoot, home, false);
                 var outcome = new EnvironmentOutcome(target, status, null, changed, backups, [], null);
                 if (parseResult.GetValue(output) == "json")
@@ -226,6 +241,38 @@ internal static class EnvCommand
         };
         option.AcceptOnlyFromAmong("user", "global");
         return option;
+    }
+
+    /// <summary>Destino do ambiente no Windows; sem valor, o registro.</summary>
+    internal static Option<string?> WindowsTargetOption()
+    {
+        var option = new Option<string?>("--windows-env-target")
+        {
+            Description = "Windows: onde gravar o ambiente do usuário, registry (padrão, HKCU\\Environment) ou profile (perfis do PowerShell, sem registro)",
+        };
+        option.AcceptOnlyFromAmong("registry", "profile");
+        return option;
+    }
+
+    /// <summary>Valida <c>--windows-env-target</c>: só no Windows e no escopo user.</summary>
+    internal static WindowsEnvironmentTarget ParseWindowsTarget(CliServices services, string? value, bool global)
+    {
+        if (value is null)
+        {
+            return WindowsEnvironmentTarget.Registry;
+        }
+
+        if (!services.IsWindowsTarget)
+        {
+            throw new DotnetScopeException(ExitCodes.Usage, "--windows-env-target só se aplica ao Windows.");
+        }
+
+        if (global)
+        {
+            throw new DotnetScopeException(ExitCodes.Usage, "--windows-env-target só se aplica ao escopo user; no global, o ambiente é do instalador oficial.");
+        }
+
+        return value == "profile" ? WindowsEnvironmentTarget.Profile : WindowsEnvironmentTarget.Registry;
     }
 
     internal static Option<bool> TelemetryOption() =>

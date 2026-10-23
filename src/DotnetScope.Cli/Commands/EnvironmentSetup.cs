@@ -47,9 +47,15 @@ internal static class EnvironmentSetup
         EnvironmentTarget target,
         EnvConflictPolicy policy,
         bool yes,
-        bool dryRun)
+        bool dryRun,
+        IDiagnosticSink? diagnostics = null)
     {
         var plan = configurator.PlanApply(target, policy);
+        foreach (var warning in plan.Warnings)
+        {
+            diagnostics?.Warning(warning);
+        }
+
         if (plan.RequiresConfirmation && !yes && !dryRun)
         {
             var links = string.Join(", ", plan.Profiles.Where(p => p.IsSymlink).Select(p => $"{p.Path} -> {p.WritePath}"));
@@ -67,6 +73,29 @@ internal static class EnvironmentSetup
         }
 
         return plan;
+    }
+
+    /// <summary>
+    /// No Windows, avisa quando o outro destino (registro ou perfis do PowerShell) já guarda uma configuração: os dois
+    /// coexistem até <c>dotnetscope env remove</c>, que remove ambos.
+    /// </summary>
+    public static void WarnOtherWindowsTarget(CliServices services, string home, WindowsEnvironmentTarget chosen, IDiagnosticSink diagnostics)
+    {
+        if (!services.IsWindowsTarget)
+        {
+            return;
+        }
+
+        IUserEnvironmentConfigurator other = chosen == WindowsEnvironmentTarget.Profile
+            ? services.CreateWindowsEnvironment(home)
+            : services.CreateWindowsProfileEnvironment(home);
+        if (other.ConfiguredRoot() is { } root)
+        {
+            var where = chosen == WindowsEnvironmentTarget.Profile ? @"HKCU\Environment" : "nos perfis do PowerShell";
+            diagnostics.Warning(
+                $"o dotnetscope já configurou {root} {where}; essa configuração continua valendo. Para manter só um destino, "
+                + "execute dotnetscope env remove e depois env apply com o --windows-env-target desejado.");
+        }
     }
 
     public static async Task<EnvironmentOutcome> ApplyAsync(
@@ -104,6 +133,31 @@ internal static class EnvironmentSetup
 
             return new EnvironmentOutcome(
                 target, result.ChangedFiles.Count > 0 ? "applied" : "unchanged", null, result.ChangedFiles, result.Backups, plan.Conflicts, verification);
+        }
+
+        if (configurator is WindowsProfileEnvironmentConfigurator profile)
+        {
+            LoginShellResult? verification = null;
+            try
+            {
+                verification = await profile.VerifyAsync(target.DotnetRoot, cancellationToken).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // A verificação é informativa: qualquer falha vira aviso sem desfazer a configuração.
+            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+#pragma warning restore CA1031
+            {
+                diagnostics.Warning($"não foi possível verificar um terminal PowerShell novo: {exception.Message}");
+            }
+
+            if (verification is { Matches: false })
+            {
+                diagnostics.Warning(
+                    $"em um terminal novo do {verification.Shell}, dotnet resolve para {verification.ResolvedDotnet ?? "nada"}; "
+                    + "verifique a política de execução e os perfis do PowerShell.");
+            }
+
+            return new EnvironmentOutcome(
+                target, result.ChangedFiles.Count > 0 ? "applied" : "unchanged", profile.SessionScript, result.ChangedFiles, result.Backups, plan.Conflicts, verification);
         }
 
         if (configurator is SystemEnvironmentConfigurator system)
@@ -178,7 +232,7 @@ internal static class EnvironmentSetup
 
                 break;
             case "unchanged":
-                await output.WriteLineAsync(windows
+                await output.WriteLineAsync(windows && outcome.Script is null
                     ? "Ambiente já configurado; nenhuma variável foi alterada."
                     : "Ambiente já configurado; nenhum perfil foi alterado.").ConfigureAwait(false);
                 break;
@@ -187,7 +241,14 @@ internal static class EnvironmentSetup
                 break;
         }
 
-        if (outcome.Script is not null)
+        if (outcome.Script is not null && windows)
+        {
+            await output.WriteLineAsync(
+                "Terminais PowerShell novos carregam o ambiente pelo perfil; o registro não foi alterado, então cmd, IDEs e "
+                + "aplicativos abertos fora do PowerShell não recebem DOTNET_ROOT nem o PATH.").ConfigureAwait(false);
+            await output.WriteLineAsync($"Para usar nesta sessão: . {ShellQuoting.PowerShell(outcome.Script)}").ConfigureAwait(false);
+        }
+        else if (outcome.Script is not null)
         {
             await output.WriteLineAsync($"Para usar nesta sessão: . {ShellQuoting.Posix(outcome.Script)}").ConfigureAwait(false);
         }
