@@ -182,6 +182,86 @@ renove o secret ao expirar. O token é lido da variável de ambiente, nunca da
 linha de comando. Cada PR passa pela validação automática e pela moderação do
 `microsoft/winget-pkgs`; a versão fica disponível no `winget` após o merge.
 
+### Acompanhamento das submissões ao winget
+
+Uma versão só fica disponível no `winget install` depois que o PR dela é integrado
+ao [`microsoft/winget-pkgs`](https://github.com/microsoft/winget-pkgs). Até lá, o
+PR passa pela validação automática da Microsoft e pela moderação voluntária, que
+pode levar dias. Os comandos abaixo são somente leitura e funcionam com qualquer
+`gh` autenticado:
+
+```bash
+# Versões já publicadas no catálogo (uma pasta por versão; HTTP 404 = nenhuma ainda)
+gh api repos/microsoft/winget-pkgs/contents/manifests/l/lzocateli/DotnetScope --jq '.[].name'
+
+# PRs submetidos, abertos e encerrados
+gh pr list --repo microsoft/winget-pkgs --author lzocateli --state all \
+  --search "lzocateli.DotnetScope in:title" --json number,title,state,createdAt,url
+
+# Estado de um PR: labels, checks e últimos comentários
+gh pr view <número> --repo microsoft/winget-pkgs --json state,labels,mergedAt,url
+gh pr view <número> --repo microsoft/winget-pkgs --comments | tail -n 40
+
+# Execuções do winget.yml e execuções aguardando aprovação de Environment
+gh run list --repo lzocateli/DotnetScope --workflow winget.yml --limit 5
+gh run list --repo lzocateli/DotnetScope --status waiting
+```
+
+No Windows, `winget show lzocateli.DotnetScope --versions` lista as versões que o
+cliente já enxerga; o índice pode levar algumas horas para refletir um merge.
+
+Labels mais comuns no PR (referência: [Moderation](https://github.com/microsoft/winget-pkgs/blob/master/doc/Moderation.md)
+e [Validation](https://github.com/microsoft/winget-pkgs/blob/master/doc/Validation.md)):
+
+| Label | Significado | Ação |
+| --- | --- | --- |
+| `Azure-Pipeline-Passed`, `Validation-Completed` | Validação automática aprovada | Aguardar moderação |
+| `Needs-CLA` | Falta o Contributor License Agreement da Microsoft | Ver abaixo; nenhum PR é integrado sem ele |
+| `Needs-Author-Feedback` | O moderador pediu ajuste ou resposta | Responder no PR; se o manifesto mudar, corrigir no `New-WingetManifest.ps1` e ressubmeter |
+| `Validation-*-Error` (por exemplo `Validation-Installation-Error`, `Validation-Hash-Verification-Failed`) | A validação automática falhou | Ler o comentário do bot; o asset ou o manifesto precisa de correção |
+| `Moderator-Approved` | Aprovado pelo moderador | Aguardar o merge automático |
+| `New-Package` | Primeira versão do pacote no catálogo | Exige revisão manual mais detalhada |
+
+**Contributor License Agreement (uma vez por conta).** O primeiro PR de uma
+conta no `microsoft/winget-pkgs` recebe `Needs-CLA`. O titular da conta lê o
+acordo publicado pelo bot no PR e, se concordar, responde nesse PR com
+`@microsoft-github-policy-service agree` (contribuição pessoal) ou com a
+variante `company="..."`, quando a contribuição for feita em nome de um
+empregador. A assinatura é uma decisão jurídica do titular: não a automatize nem
+a delegue. Depois dela, o label sai e o PR segue para a moderação; os PRs
+seguintes da mesma conta não pedem o CLA de novo.
+
+### Versão anterior ainda pendente no winget
+
+O `winget.yml` não submete uma versão que já esteja no catálogo ou que já tenha
+PR aberto, mas **não** verifica se uma versão anterior ainda aguarda moderação.
+Enquanto a primeira versão não for integrada, o PR da seguinte também sai como
+`New package`, e os moderadores podem fechar um dos dois. Para evitar PRs
+concorrentes, mantenha no máximo um PR aberto por vez:
+
+1. Antes de aprovar o Environment `winget` no `post-release.yml`, consulte os
+   PRs abertos (comando `gh pr list` acima, com `--state open`).
+2. Se não houver PR aberto do pacote, aprove: a nova versão é submetida.
+3. Se houver PR de uma versão anterior aberto, **rejeite** a aprovação do
+   Environment `winget` (Actions → execução → *Review deployments* → *Reject*).
+   A release, o Homebrew e os demais canais já estão publicados; somente o job
+   `Submit to microsoft/winget-pkgs` termina como rejeitado, e a execução do
+   `Release` aparece com falha por esse motivo.
+4. Resolva o PR pendente: assine o CLA se houver `Needs-CLA` e responda a
+   `Needs-Author-Feedback`. Se o PR antigo for encerrado sem merge, não o
+   reabra: ele já foi superado.
+5. Quando o PR pendente for integrado ou encerrado, submeta somente a versão
+   mais recente publicada no GitHub; versões intermediárias podem ser puladas,
+   porque o `winget upgrade` instala sempre a mais nova:
+
+   ```bash
+   gh workflow run winget.yml --repo lzocateli/DotnetScope --ref main \
+     -f version=X.Y.Z -f submit=true
+   ```
+
+   O dispatch em `main` passa pela mesma validação, instalação local e aprovação
+   do Environment `winget`.
+
 ### Token do tap Homebrew
 
 O secret `HOMEBREW_TAP_TOKEN` fica somente no Environment `release`, usado pelo
