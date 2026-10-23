@@ -1,11 +1,11 @@
 name: Spike ou decisão arquitetural
 description: Registre uma investigação ou decisão que pode exigir ADR
 title: "[Spike]: "
-labels: ["question"]
+labels: ["question", "type:spike", "status:triage"]
 body:
   - type: markdown
     attributes:
-      value: "Intake apenas: esta Issue não autoriza experimento ou implementação. A investigação apoia uma decisão do plano em docs/plano-implementacao.md; ADR auxiliar permanece proposed até decisão humana."
+      value: "Intake apenas: esta Issue não autoriza experimento ou implementação. Aguarde escopo revisado e autorização explícita do mantenedor. A investigação apoia uma decisão do plano em docs/plano-implementacao.md; apresente alternativas, evidências e limites. ADR auxiliar permanece proposed até decisão humana."
   - type: textarea
     id: question
     attributes:

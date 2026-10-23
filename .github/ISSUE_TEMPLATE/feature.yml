@@ -1,11 +1,11 @@
 name: Propor funcionalidade ou melhoria
 description: Descreva um problema e um resultado verificável
 title: "[Feature]: "
-labels: ["enhancement"]
+labels: ["enhancement", "type:feature", "status:triage"]
 body:
   - type: markdown
     attributes:
-      value: "Propostas de funcionalidade, desempenho, documentação e experiência de uso são bem-vindas. Esta Issue não autoriza implementação: o mantenedor revisa o escopo e relaciona a fase de docs/plano-implementacao.md na triagem."
+      value: "Propostas de funcionalidade, desempenho, documentação e experiência de uso são bem-vindas. Esta Issue não autoriza implementação: o mantenedor revisa o escopo e relaciona a fase de docs/plano-implementacao.md na triagem. Após autorização explícita, implemente em branch própria e PR vinculado, com critérios de aceite e evidências."
   - type: textarea
     id: problem
     attributes:

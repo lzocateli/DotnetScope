@@ -1,11 +1,11 @@
 name: Relatar defeito
 description: Registre um comportamento incorreto reproduzível
 title: "[Bug]: "
-labels: ["bug"]
+labels: ["bug", "type:bug", "status:triage"]
 body:
   - type: markdown
     attributes:
-      value: "Intake apenas: esta Issue não autoriza correção. A correção ocorre em PR vinculado, com teste de regressão e autorização explícita do mantenedor. Não inclua tokens, chaves, dados reais ou detalhes de vulnerabilidade. Use Security Advisories para segurança."
+      value: "Intake apenas: esta Issue não autoriza correção. Aguarde a revisão de escopo e autorização explícita do mantenedor; a correção ocorre em PR vinculado, com teste de regressão. Não inclua tokens, chaves, dados reais ou detalhes de vulnerabilidade. Use Security Advisories para segurança."
   - type: textarea
     id: behavior
     attributes:

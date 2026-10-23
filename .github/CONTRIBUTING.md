@@ -40,6 +40,14 @@ consulte [SUPPORT](SUPPORT.md); vulnerabilidades seguem exclusivamente a
 
 O repositório não usa Spec Kit. O trabalho segue Issue → fase do plano → branch → PR.
 
+Os formulários usam as labels declaradas em [labels.json](labels.json), além
+das labels padrão do GitHub (`bug`, `enhancement`, `question`) usadas nas notas
+de release. Gerar arquivos não cria labels nem habilita controles no GitHub. O
+mantenedor deve executar `groundwork labels` com GitHub CLI autenticado para
+diagnosticar as ausentes e, se aprovado, `groundwork labels --sync --dry-run`
+seguido de `groundwork labels --sync`. Labels existentes não são renomeadas,
+removidas nem têm cores e descrições sobrescritas.
+
 1. Procure Issues e PRs existentes para evitar duplicação. Abra ou referencie
    uma Issue com o problema e o resultado esperado; bugs, melhorias,
    documentação e dúvidas têm [formulários próprios](https://github.com/lzocateli/DotnetScope/issues/new/choose).
