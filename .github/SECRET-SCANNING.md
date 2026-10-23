@@ -85,8 +85,4 @@ arquivo no commit atual não elimina um secret já presente no histórico.
 - [ ] Confirmar `core.hooksPath=.githooks` nos clones administrativos.
 - [ ] Revisar e registrar qualquer exceção antes de alterar a configuração do scanner.
 
-O workflow também observa `development`, mas isso não cria nem protege a
-branch automaticamente. Se ela passar a ser usada como branch de integração,
-configure sua proteção explicitamente antes de aceitar contribuições nela.
-
 As proteções nativas do GitHub complementam e não substituem o hook e o workflow.

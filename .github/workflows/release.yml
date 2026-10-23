@@ -301,7 +301,7 @@ jobs:
           }
           if ($env:VERSION_SUFFIX) {
             $arguments.Prerelease = $true
-          fi
+          }
           ./tools/scripts/Publish-ReleaseAssets.ps1 @arguments
           exit $LASTEXITCODE
 
