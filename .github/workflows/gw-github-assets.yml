@@ -1,0 +1,75 @@
+# Gerenciado pelo Altivy.Groundwork (componente publish-github-assets). Não edite: mudanças vão para o catálogo.
+# Chamado pelo publish.yml na tag. Anexa à GitHub Release (ainda em rascunho) os arquivos de um
+# artifact do Actions, idempotente por SHA-256, atesta-os e emite release-entries-assets.
+name: Publish release assets
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag da release (vX.Y.Z)
+        type: string
+        required: true
+      artifact-name:
+        description: Artifact do Actions com os arquivos a anexar
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  assets:
+    name: Release assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+
+      - name: Download assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: artifacts/release-assets
+
+      - name: Read attestation policy
+        id: policy
+        shell: pwsh
+        run: |
+          Import-Module ./tools/scripts/ci/GroundworkRelease.psm1
+          $enabled = Get-AttestationPolicy -Config (Read-CiCdConfig)
+          if (-not $enabled) {
+            Write-Output '::warning title=Atestação desativada::"attestations": false em .github/ci-cd.json; artefatos sem atestação não são aceitos pelo deploy.'
+          }
+          "enabled=$($enabled.ToString().ToLowerInvariant())" | Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8
+
+      - name: Attest assets
+        if: ${{ steps.policy.outputs.enabled == 'true' }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: artifacts/release-assets/*
+
+      - name: Upload missing assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: >
+          ./tools/scripts/ci/Publish-ReleaseAssets.ps1 -Tag $env:RELEASE_TAG -Path artifacts/release-assets
+          -EntriesPath artifacts/release-entries/assets.json
+
+      - name: Upload release entries
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-entries-assets
+          path: artifacts/release-entries/assets.json
+          if-no-files-found: error
+          retention-days: 7

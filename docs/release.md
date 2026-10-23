@@ -1,8 +1,14 @@
 # Processo de release
 
-O workflow [`release.yml`](../.github/workflows/release.yml) publica o
-`dotnetscope` em Native AOT para todos os RIDs suportados. Cada etapa tem um
-comando local equivalente em `tools/scripts/`.
+O processo comum de release (Release PR, versão, tag, `release-manifest.json`,
+republicação e correção de release defeituosa) é o do Altivy.Groundwork, descrito
+no runbook [release](runbooks/release.md) e em [CI-CD](../.github/CI-CD.md). Este
+documento cobre o que é específico do DotnetScope: o
+[`publish.yml`](../.github/workflows/publish.yml) publica o `dotnetscope` em
+Native AOT para todos os RIDs suportados e o
+[`post-release.yml`](../.github/workflows/post-release.yml) distribui pelo
+Homebrew e pelo winget. Cada etapa tem um comando local equivalente em
+`tools/scripts/`.
 
 ## Artefatos
 
@@ -17,12 +23,13 @@ comando local equivalente em `tools/scripts/`.
 | `SHA256SUMS` | SHA-256 de todos os arquivos acima, formato `sha256sum` |
 
 São 18 arquivos além do `SHA256SUMS` (7 pacotes, 7 SBOMs, 2 `.deb` e 2
-instaladores); o job `publish` falha se a contagem divergir. Os nomes não levam
+instaladores); o job `Prepare release assets` falha se a contagem divergir. Os nomes não levam
 versão para que `releases/latest/download/<arquivo>` seja estável; a versão fica
 na tag e em `dotnetscope --version` (no `.deb`, sufixos usam `~`, por exemplo
 `0.4.0~rc.1`, para ordenar antes da versão final).
 
-Cada arquivo tem atestação de proveniência do GitHub e cada pacote (`.tar.gz`,
+Cada arquivo tem atestação de proveniência do GitHub (`gw-github-assets.yml`), a
+release tem o `release-manifest.json` atestado com o SHA-256 de cada asset e cada pacote (`.tar.gz`,
 `.zip` e `.deb`) tem atestação do SBOM do seu RID, ambas Sigstore keyless via
 OIDC, sem custo. Os binários não têm assinatura Authenticode nem Developer ID
 (exigem certificados pagos; ver [F9 sem custo](plano-implementacao.md#f9-sem-custo-proposta)).
@@ -42,20 +49,20 @@ gh attestation verify dotnetscope-linux-x64.tar.gz --repo lzocateli/DotnetScope 
 | --- | --- | --- |
 | Instaladores | `install.sh` / `install.ps1` (ver [README](../README.md#instalação)) | `releases/latest` |
 | `.deb` (asset, sem repositório APT) | `sudo apt install ./dotnetscope-linux-x64.deb` | manual, baixando a nova release |
-| Homebrew (macOS e Linux) | `brew install lzocateli/tap/dotnetscope` | `brew upgrade`; fórmula atualizada pelo `release.yml` |
-| winget (Windows) | `winget install lzocateli.DotnetScope` | `winget upgrade`; PR ao `microsoft/winget-pkgs` aberto pelo `release.yml`, publicado após a moderação da Microsoft |
+| Homebrew (macOS e Linux) | `brew install lzocateli/tap/dotnetscope` | `brew upgrade`; fórmula atualizada pelo `post-release.yml` |
+| winget (Windows) | `winget install lzocateli.DotnetScope` | `winget upgrade`; PR ao `microsoft/winget-pkgs` aberto pelo `post-release.yml`, publicado após a moderação da Microsoft |
 
 A fórmula vive em [`lzocateli/homebrew-tap`](https://github.com/lzocateli/homebrew-tap)
 e é gerada por [`New-HomebrewFormula.ps1`](../tools/scripts/New-HomebrewFormula.ps1)
 a partir do `SHA256SUMS`; instala somente o binário (`.tar.gz` de
 `osx-arm64`, `osx-x64`, `linux-arm64` e `linux-x64`) e o `brew test` confere
-`--version`. Pre-releases não atualizam o tap.
+`--version`.
 
 O manifesto winget (`lzocateli.DotnetScope`, schema 1.10.0) é gerado por
 [`New-WingetManifest.ps1`](../tools/scripts/New-WingetManifest.ps1) a partir do
 `SHA256SUMS`: `.zip` de `win-x64` e `win-arm64` com `dotnetscope.exe` portátil
 (alias `dotnetscope`). O winget não altera `DOTNET_ROOT` nem perfis; isso
-continua sendo feito pelo próprio `dotnetscope`. Pre-releases não vão ao winget.
+continua sendo feito pelo próprio `dotnetscope`.
 
 ## Build por RID
 
@@ -97,8 +104,7 @@ Windows PowerShell 5.1 e PowerShell 7, por `-File` e como scriptblock.
 
 Somente o mantenedor publica versões. A aprovação de um PR e a exceção para
 seus próprios PRs não substituem a aprovação do Environment `release`; consulte
-a [governança](../.github/GOVERNANCE.md). Não envie tags sem solicitação
-explícita do mantenedor.
+a [governança](../.github/GOVERNANCE.md).
 
 ### Releases de segurança e suporte
 
@@ -108,49 +114,47 @@ minor nova encerra o suporte à anterior. O suporte da linha `1.x` termina com
 `2.0.0`. Não há SLA contratual. Correções são publicadas na linha suportada;
 consulte a [política de segurança](../.github/SECURITY.md#versões-suportadas).
 
-1. Ajuste `VersionPrefix` em `Directory.Build.props` por PR e aguarde os checks.
-2. Crie e envie a tag anotada `vX.Y.Z` (ou `vX.Y.Z-sufixo` para pre-release)
-   no commit de `main`. O ruleset `release-tags-protected` restringe criação,
-   atualização e exclusão de tags `v*` ao papel de administrador; antes de
-   compilar, o workflow verifica com histórico completo que o commit da tag é
-   ancestral de `origin/main`:
+### Fluxo
 
-   ```bash
-   git tag -a v0.1.0 -m "DotnetScope 0.1.0"
-   git push origin v0.1.0
-   ```
-
-3. O workflow valida que a tag corresponde a `VersionPrefix`, executa build,
-   testes, publicação dos sete RIDs, smoke e testes dos instaladores em seis
-   runners.
+1. PRs `feat`, `fix` (ou com `!`) integrados na `main` atualizam o Release PR
+   `chore(main): release X.Y.Z`, aberto pelo release-please com o GitHub App
+   `Altivy Release`. O release-please calcula a versão, atualiza `VersionPrefix`
+   em `Directory.Build.props`, `.release-please-manifest.json` e o `CHANGELOG.md`.
+   Não edite a versão nem crie tags manualmente.
+2. O merge do Release PR pelo mantenedor executa o `gw-release.yml`: o App cria a
+   tag `vX.Y.Z` e a GitHub Release em rascunho, e o workflow confere que a tag
+   corresponde às versões e que o commit é ancestral de `origin/main`.
+3. O `publish.yml`, na tag, executa build, testes, publicação dos sete RIDs,
+   smoke e testes dos instaladores em seis runners.
 4. O job `attest-sbom` atesta o SBOM de cada RID (sujeitos: o pacote e, no
-   Linux glibc, o `.deb`) antes da aprovação, para que a release nunca fique
+   Linux glibc, o `.deb`) antes dos assets, para que a release nunca fique
    pública sem essas atestações.
-5. O job `publish` aguarda aprovação no Environment `release`, regenera o
-   `SHA256SUMS` com os instaladores, confere os 18 arquivos, gera a atestação
-   de proveniência e cria a release com notas automáticas (categorias em
-   [`release.yml`](../.github/release.yml)). Tags com sufixo viram pre-release
-   e não aparecem em `releases/latest`. Uma reexecução preserva assets com
-   SHA-256 idêntico, recusa divergências antes de enviar arquivos e envia
-   somente assets ausentes. Se houver falha parcial, outra execução completa
-   apenas o conjunto que falta, sem sobrescrita.
-6. No mesmo job (sem segunda aprovação) e somente sem sufixo,
-   [`Update-HomebrewTap.ps1`](../tools/scripts/Update-HomebrewTap.ps1) gera a
-   fórmula e envia o commit `dotnetscope X.Y.Z` ao tap. Não faz nada se a
-   fórmula já corresponder à versão; se o tap já publicar versão maior
-   (correção de uma linha antiga), mantém o tap e registra um aviso.
-7. Quando o tap ficou na versão da tag, `verify-homebrew` instala pelo tap em
-   `macos-15` e confere a versão e o `brew test`.
-8. Sem sufixo, o job `winget` chama [`winget.yml`](../.github/workflows/winget.yml):
-   gera o manifesto, executa `winget validate`, instala pelo manifesto local em
-   `windows-2025`, confere `dotnetscope --version`, desinstala e, no Environment
-   `winget`, submete o PR com `wingetcreate submit` (v1.12.13.0, SHA-256
-   fixado). O Environment exige aprovação também no caminho automático e só
-   permite `main` e tags `v*`. Não submete se a versão já estiver no
-   `winget-pkgs` ou houver PR aberto para ela.
+5. `Prepare release assets` regenera o `SHA256SUMS` com os instaladores e confere
+   os 18 arquivos; `Publish release assets` (`gw-github-assets.yml`) aguarda
+   aprovação no Environment `release`, gera a atestação de proveniência e anexa os
+   arquivos à release em rascunho, sem sobrescrever asset já publicado.
+6. O `gw-release.yml` gera e atesta o `release-manifest.json` e publica a
+   release. As notas vêm do `CHANGELOG.md` gerado pelo release-please.
+7. Com a release pública, o `post-release.yml`:
+   - no Environment `release` (nova aprovação), executa
+     [`Update-HomebrewTap.ps1`](../tools/scripts/Update-HomebrewTap.ps1) com o
+     `SHA256SUMS` publicado e envia o commit `dotnetscope X.Y.Z` ao tap. Não faz
+     nada se a fórmula já corresponder à versão; se o tap já publicar versão maior
+     (correção de uma linha antiga), mantém o tap e registra um aviso;
+   - quando o tap ficou na versão da release, `verify-homebrew` instala pelo tap
+     em `macos-15` e confere a versão e o `brew test`;
+   - chama [`winget.yml`](../.github/workflows/winget.yml): gera o manifesto,
+     executa `winget validate`, instala pelo manifesto local em `windows-2025`,
+     confere `dotnetscope --version`, desinstala e, no Environment `winget`,
+     submete o PR com `wingetcreate submit` (v1.12.13.0, SHA-256 fixado). Não
+     submete se a versão já estiver no `winget-pkgs` ou houver PR aberto para ela.
 
-`workflow_dispatch` e pull requests que alteram a cadeia de release executam
-tudo exceto `attest-sbom`, `publish`, `verify-homebrew` e `winget`.
+Pull requests que alteram a cadeia de release e `workflow_dispatch` do
+`publish.yml` executam build, smoke e testes dos instaladores, sem publicar.
+Prereleases (`vX.Y.Z-sufixo`) não fazem parte do fluxo automático.
+
+Se a publicação falhar parcialmente, a release continua em rascunho: corrija a
+causa e use o modo `republish` descrito no [runbook](runbooks/release.md).
 
 ### Winget
 
@@ -162,9 +166,10 @@ release, sem submeter) e por `workflow_dispatch` a partir de `main`, com
 gh workflow run winget.yml -f version=0.4.0 -f submit=true
 ```
 
-No dispatch manual, `submit=true` é recusado fora de `main`; no fluxo
-automático, o workflow reutilizável recebe o contexto `push` do workflow
-chamador e só autoriza a tag `vX.Y.Z` correspondente.
+No dispatch manual, `submit=true` é recusado fora de `main`. No fluxo
+automático, o workflow reutilizável recebe o contexto do `gw-release.yml`:
+`push` em `main` (post-release) ou `workflow_dispatch` na tag `vX.Y.Z`
+correspondente (republish); qualquer outra origem é recusada.
 
 O secret `WINGET_CREATE_GITHUB_TOKEN` fica somente no Environment `winget`
 com `@lzocateli` como revisor obrigatório. `prevent_self_review` está
@@ -179,12 +184,13 @@ linha de comando. Cada PR passa pela validação automática e pela moderação 
 
 ### Token do tap Homebrew
 
-O secret `HOMEBREW_TAP_TOKEN` fica somente no Environment `release` e é um PAT
+O secret `HOMEBREW_TAP_TOKEN` fica somente no Environment `release`, usado pelo
+job do tap no `post-release.yml`, e é um PAT
 fine-grained com acesso apenas a `lzocateli/homebrew-tap` e permissão
 `Contents: Read and write`. O script o lê da variável de ambiente e o repassa ao
 `git` por `GIT_CONFIG_*`, fora da linha de comando. Ao expirar, gere um novo PAT
-com o mesmo escopo e substitua o secret; sem ele, a release é criada e o passo
-do tap falha, podendo ser reexecutado após a correção.
+com o mesmo escopo e substitua o secret; sem ele, a release é publicada e o passo
+do tap falha, podendo ser reexecutado (re-run do job) após a correção.
 
 Para testar localmente sem publicar (commit só no clone temporário):
 
@@ -193,6 +199,11 @@ pwsh ./tools/scripts/Update-HomebrewTap.ps1 -Version 0.4.0 -ReleaseDirectory dis
 ```
 
 ## Limitações conhecidas
+
+- O modo `republish` recompila os pacotes. Assets já anexados são mantidos com o
+  digest publicado, mas um asset ausente é enviado a partir do novo build, que pode
+  não reproduzir byte a byte o `SHA256SUMS` já publicado. Se o `SHA256SUMS` já
+  estiver anexado, confira o resultado com `sha256sum --check` antes de divulgar.
 
 - A configuração do GitHub permite bypass administrativo do Environment
   `winget` (`can_admins_bypass=true`). O único administrador consultado é

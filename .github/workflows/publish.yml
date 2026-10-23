@@ -1,34 +1,44 @@
-name: Release
+# Semente do Altivy.Groundwork (componente release), adaptada do antigo release.yml.
+# Publica o dotnetscope em Native AOT para todos os RIDs suportados (ver docs/release.md).
+# - workflow_call (gw-release.yml, apos o merge humano do Release PR): build, smoke e testes
+#   dos instaladores na tag, SBOM atestado e assets anexados a GitHub Release em rascunho no
+#   Environment `release` (gw-github-assets.yml, com atestacao de proveniencia). Homebrew e
+#   winget rodam em post-release.yml, com a release ja publica.
+# - pull_request que altera a cadeia de release e workflow_dispatch: build, smoke e testes
+#   dos instaladores, sem publicar.
+name: Publish
 
-# Publica o dotnetscope em Native AOT para todos os RIDs suportados.
-# - Tag vX.Y.Z[-sufixo] (igual a VersionPrefix): build, smoke, testes dos instaladores e
-#   publicação da release no GitHub após aprovação no Environment `release`. Sem sufixo,
-#   atualiza também a fórmula do tap Homebrew (lzocateli/homebrew-tap) no mesmo job e
-#   submete o manifesto winget (winget.yml, Environment `winget`).
-# - workflow_dispatch e pull requests que alteram a cadeia de release: build, smoke e
-#   testes dos instaladores, sem publicar.
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag da release (vX.Y.Z)
+        type: string
+        required: true
+      version:
+        description: Versao da release (X.Y.Z)
+        type: string
+        required: true
+      republish:
+        description: Reenvio de artefatos ausentes de uma release existente
+        type: boolean
+        default: false
   pull_request:
     branches:
       - main
     paths:
-      - ".github/workflows/release.yml"
+      - ".github/workflows/publish.yml"
+      - ".github/workflows/post-release.yml"
       - ".config/dotnet-tools.json"
       - "install/**"
       - "tests/installers/**"
       - "tools/build/**"
       - "tools/scripts/New-HomebrewFormula.ps1"
+      - "tools/scripts/Update-HomebrewTap.ps1"
       - "tools/scripts/Publish-Aot.ps1"
       - "tools/scripts/Test-AotPackage.ps1"
       - "tools/scripts/Test-Installers.ps1"
       - "tools/scripts/ReleaseGovernance.psm1"
-      - "tools/scripts/Publish-ReleaseAssets.ps1"
-      - "tools/scripts/Test-ReleaseAssets.ps1"
-      - "tools/scripts/Assert-ReleaseTag.ps1"
-      - "tools/scripts/Test-ReleaseTag.ps1"
       - "tools/scripts/Assert-WingetSubmissionSource.ps1"
       - "tools/scripts/Test-WingetSubmissionPolicy.ps1"
   workflow_dispatch:
@@ -36,7 +46,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: publish-${{ github.event.pull_request.number || inputs.tag || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -47,58 +57,37 @@ jobs:
     permissions:
       contents: read
     outputs:
-      version-suffix: ${{ steps.version.outputs.suffix }}
       publish: ${{ steps.version.outputs.publish }}
-      version-prefix: ${{ steps.version.outputs.version-prefix }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
           persist-credentials: false
-          fetch-depth: 0
 
       - name: Resolve version
         id: version
         shell: pwsh
         env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-          EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ inputs.tag }}
         run: |
           [xml] $props = Get-Content -LiteralPath Directory.Build.props -Raw
           $prefix = @($props.Project.PropertyGroup | ForEach-Object { $_.VersionPrefix } | Where-Object { $_ })[0]
-          $suffix = ''
           $publish = 'false'
-          if ($env:EVENT_NAME -eq 'push' -and $env:REF_TYPE -eq 'tag') {
-            if ($env:REF_NAME -notmatch '^v([0-9]+\.[0-9]+\.[0-9]+)(?:-([0-9A-Za-z][0-9A-Za-z.-]*))?$') {
-              Write-Output "::error::Tag '$($env:REF_NAME)' fora do formato vX.Y.Z[-sufixo]."
+          if ($env:TAG) {
+            # gw-release.yml ja validou tag, versoes e ancestralidade; aqui confirma o checkout da tag.
+            if ($env:TAG -cne "v$prefix") {
+              Write-Output "::error::Tag '$($env:TAG)' difere de VersionPrefix $prefix em Directory.Build.props."
               exit 1
             }
-            if ($Matches[1] -ne $prefix) {
-              Write-Output "::error::Tag '$($env:REF_NAME)' difere de VersionPrefix $prefix em Directory.Build.props."
-              exit 1
-            }
-            $suffix = "$($Matches[2])"
             $publish = 'true'
           }
-          "suffix=$suffix" >> $env:GITHUB_OUTPUT
           "publish=$publish" >> $env:GITHUB_OUTPUT
-          "version-prefix=$prefix" >> $env:GITHUB_OUTPUT
-          Write-Output "Versao: $prefix$(if ($suffix) { "-$suffix" }) (publicar: $publish)"
-
-      - name: Verify release tag ancestry
-        if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
-        shell: pwsh
-        env:
-          TAG: ${{ github.ref_name }}
-          VERSION_PREFIX: ${{ steps.version.outputs.version-prefix }}
-        run: ./tools/scripts/Assert-ReleaseTag.ps1 -RepositoryRoot $env:GITHUB_WORKSPACE -Tag $env:TAG -VersionPrefix $env:VERSION_PREFIX
+          Write-Output "Versao: $prefix (publicar: $publish)"
 
       - name: Build and tests in container
         shell: pwsh
         run: |
-          ./tools/scripts/Test-ReleaseAssets.ps1
-          ./tools/scripts/Test-ReleaseTag.ps1
           ./tools/scripts/Test-WingetSubmissionPolicy.ps1
           ./tools/scripts/Invoke-Validation.ps1 -Engine docker
 
@@ -124,6 +113,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
           persist-credentials: false
 
       - name: Setup .NET (native toolchain)
@@ -136,10 +126,8 @@ jobs:
         shell: pwsh
         env:
           RID: ${{ matrix.rid }}
-          VERSION_SUFFIX: ${{ needs.validate.outputs.version-suffix }}
         run: |
           $arguments = @{ Rid = $env:RID }
-          if ($env:VERSION_SUFFIX) { $arguments.VersionSuffix = $env:VERSION_SUFFIX }
           if ($IsLinux) { $arguments.Engine = 'docker' }
           ./tools/scripts/Publish-Aot.ps1 @arguments
           exit $LASTEXITCODE
@@ -151,6 +139,7 @@ jobs:
           path: artifacts/release/dotnetscope-${{ matrix.rid }}.*
           if-no-files-found: error
           retention-days: 7
+
 
   verify:
     name: Smoke and installers (${{ matrix.runner }})
@@ -173,6 +162,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
           persist-credentials: false
 
       - name: Download packages
@@ -186,13 +176,11 @@ jobs:
         shell: pwsh
         env:
           RIDS: ${{ matrix.rids }}
-          VERSION_SUFFIX: ${{ needs.validate.outputs.version-suffix }}
         run: |
           ./tools/scripts/Publish-Aot.ps1 -ChecksumsOnly
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           foreach ($rid in $env:RIDS -split ' ') {
             $arguments = @{ Rid = $rid }
-            if ($env:VERSION_SUFFIX) { $arguments.VersionSuffix = $env:VERSION_SUFFIX }
             if ($IsLinux) { $arguments.Engine = 'docker' }
             ./tools/scripts/Test-AotPackage.ps1 @arguments
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -206,8 +194,9 @@ jobs:
           ./tools/scripts/Test-Installers.ps1 @arguments
           exit $LASTEXITCODE
 
+
   attest-sbom:
-    # Antes da aprovacao: a release so fica publica com o SBOM de cada pacote atestado.
+    # Antes dos assets e da aprovacao: a release so fica publica com o SBOM de cada pacote atestado.
     name: Attest SBOM ${{ matrix.rid }}
     needs: [validate, build, verify]
     if: ${{ needs.validate.outputs.publish == 'true' }}
@@ -241,23 +230,19 @@ jobs:
           subject-path: ${{ matrix.subjects }}
           sbom-path: dist/dotnetscope-${{ matrix.rid }}.spdx.json
 
-  publish:
-    name: Publish GitHub release
+  release-assets:
+    name: Prepare release assets
     needs: [validate, build, verify, attest-sbom]
     if: ${{ needs.validate.outputs.publish == 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    environment: release
-    outputs:
-      homebrew: ${{ steps.tap.outputs.formula }}
+    timeout-minutes: 10
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
           persist-credentials: false
 
       - name: Download packages
@@ -282,79 +267,22 @@ jobs:
           }
           Get-Content -LiteralPath dist/SHA256SUMS
 
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      - name: Upload release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          subject-path: dist/*
+          name: release-assets
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Create release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-          VERSION_SUFFIX: ${{ needs.validate.outputs.version-suffix }}
-        run: |
-          $arguments = @{
-            Tag = $env:TAG
-            ReleaseDirectory = 'dist'
-            Repository = $env:GITHUB_REPOSITORY
-          }
-          if ($env:VERSION_SUFFIX) {
-            $arguments.Prerelease = $true
-          }
-          ./tools/scripts/Publish-ReleaseAssets.ps1 @arguments
-          exit $LASTEXITCODE
-
-      - name: Update Homebrew tap
-        id: tap
-        if: ${{ needs.validate.outputs.version-suffix == '' }}
-        shell: pwsh
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          ./tools/scripts/Update-HomebrewTap.ps1 -Version $env:TAG.Substring(1) -ReleaseDirectory dist -Push
-          $code = $LASTEXITCODE
-          if ($code -eq 3) {
-            Write-Output "::warning::Tap Homebrew ja publica versao maior que $($env:TAG); formula mantida."
-            "formula=newer" >> $env:GITHUB_OUTPUT
-            exit 0
-          }
-          if ($code -eq 0) { "formula=current" >> $env:GITHUB_OUTPUT }
-          exit $code
-
-  verify-homebrew:
-    name: Verify Homebrew tap
-    needs: publish
-    if: ${{ needs.publish.outputs.homebrew == 'current' }}
-    runs-on: macos-15
-    timeout-minutes: 15
-    permissions: {}
-    steps:
-      - name: Install from tap
-        shell: bash
-        env:
-          TAG: ${{ github.ref_name }}
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_ANALYTICS: "1"
-          HOMEBREW_NO_ENV_HINTS: "1"
-        run: |
-          set -euo pipefail
-          brew install lzocateli/tap/dotnetscope
-          actual="$(dotnetscope --version)"
-          case "$actual" in
-            "${TAG#v}"|"${TAG#v}"+*) echo "ok: $actual" ;;
-            *) echo "::error::Versao instalada pelo tap '$actual' difere de ${TAG#v}."; exit 1 ;;
-          esac
-          brew test lzocateli/tap/dotnetscope
-
-  winget:
-    name: Winget
-    needs: [validate, publish]
-    if: ${{ needs.validate.outputs.version-suffix == '' }}
+  publish-assets:
+    name: Publish release assets
+    needs: release-assets
+    uses: ./.github/workflows/gw-github-assets.yml
     permissions:
-      contents: read
-    uses: ./.github/workflows/winget.yml
+      contents: write
+      id-token: write
+      attestations: write
     with:
-      version: ${{ github.ref_name }}
-      submit: true
+      tag: ${{ inputs.tag }}
+      artifact-name: release-assets

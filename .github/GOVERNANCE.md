@@ -9,42 +9,44 @@ Reviews de terceiros são consultivos: não substituem a decisão do mantenedor.
 
 ## Proteção da `main`
 
-Configuração aplicada e consultada pela API do GitHub em 2026-10-22, com
-autorização humana nesta revisão de governança:
+As políticas do repositório são um contrato versionado em
+[`repository-policy.json`](repository-policy.json), gerado pelo Altivy.Groundwork
+e aplicado com `groundwork github --sync` pelo mantenedor (ver
+[REPOSITORY-POLICY](REPOSITORY-POLICY.md)). `groundwork github` confere a
+configuração remota sem alterá-la e retorna `0` quando ela corresponde ao contrato.
 
 | Ruleset | Controles | Exceções |
 | --- | --- | --- |
-| [`main-integrity`](https://github.com/lzocateli/DotnetScope/rules/25638208) | Exige PR, conversas resolvidas, branch atualizada e os quatro checks abaixo; bloqueia exclusão e force-push | Nenhuma, nem para o proprietário |
-| [`main-maintainer-only`](https://github.com/lzocateli/DotnetScope/rules/25638218) | Restringe atualizações e exige uma aprovação do code owner, descartada após novos commits | Papel de administrador, somente por PR |
-| [`release-tags-protected`](https://github.com/lzocateli/DotnetScope/rules/25666467) | Restringe criação, atualização e exclusão de `refs/tags/v*` | Papel de administrador, sempre |
+| `gw-main-integrity` | Bloqueia exclusão e force-push, exige histórico linear e o check `Result` com a branch atualizada | Nenhuma, nem para o proprietário |
+| `gw-main-review` | Exige PR com uma aprovação, descarta aprovações após novos commits, exige conversas resolvidas e merge somente por squash | Papel de administrador, somente por PR |
+| `gw-release-tags` | Restringe criação, atualização e exclusão de `refs/tags/v*` | Somente o GitHub App `Altivy Release` |
 
-Checks exigidos da integração GitHub Actions, pelos nomes exatos dos jobs:
-
-- `Full History` (workflow `Gitleaks`);
-- `Build, tests and Native AOT (linux-x64)`;
-- `Build, tests and Native AOT (win-x64)`;
-- `Build, tests and Native AOT (osx-arm64)`.
+O check `Result` (job do [`ci.yml`](workflows/ci.yml)) agrega higiene do PR
+(título Conventional Commit, actionlint e arquivos gerenciados),
+`Gitleaks / Full History` e os jobs `Build, tests and Native AOT` de
+`linux-x64`, `win-x64` e `osx-arm64`; falha se qualquer um deles não terminar com
+sucesso. Novos jobs entram em `needs` do `Result`, sem alterar o ruleset.
 
 O [CODEOWNERS](CODEOWNERS) cobre todos os arquivos com `@lzocateli`. Ele
 sozinho não bloqueia merge: a imposição depende dos rulesets ativos no GitHub.
-Novos nomes de checks precisam ser atualizados nos rulesets junto com os
-workflows, para não bloquear PRs indefinidamente.
 
-### Tags de release e Environment winget
+### Tags de release e Environments
 
-O ruleset `release-tags-protected` aplica-se a todas as tags `v*`; o único
-bypass atual é o papel `RepositoryRole: Admin`, que pertence somente a
-`@lzocateli`. Não adicione outro administrador sem rever essa exceção. O
-workflow de release também verifica que a tag resolve para um commit ancestral
-de `origin/main`, com histórico completo, antes de compilar ou publicar.
+Tags `v*` são criadas somente pelo GitHub App `Altivy Release`, no merge do
+Release PR aberto pelo release-please; nem o administrador cria tags manualmente.
+Antes de publicar, `gw-release.yml` confere que a tag corresponde às versões do
+repositório e que o commit é ancestral de `origin/main`.
 
-O Environment `winget` exige aprovação de `@lzocateli` tanto para submissões
-automáticas quanto manuais e só permite as referências `main` e `v*`. O
-`prevent_self_review` está desativado para permitir que o único mantenedor
-aprove conscientemente uma execução que ele próprio iniciou; o GitHub também
-permite bypass administrativo (`can_admins_bypass=true`), atualmente limitado
-ao mesmo mantenedor. PRs e validações sem `submit=true` não executam o job nem
-acessam `WINGET_CREATE_GITHUB_TOKEN`.
+O Environment `release` exige aprovação de `@lzocateli` para anexar os assets à
+release em rascunho e, de novo, para atualizar o tap Homebrew no
+`post-release.yml` (o `HOMEBREW_TAP_TOKEN` existe somente nele). O Environment
+`winget` exige aprovação de `@lzocateli` tanto para submissões automáticas quanto
+manuais e só permite as referências `main` e `v*`. O `prevent_self_review` está
+desativado para permitir que o único mantenedor aprove conscientemente uma
+execução que ele próprio iniciou; o GitHub também permite bypass administrativo
+(`can_admins_bypass=true`), atualmente limitado ao mesmo mantenedor. PRs e
+validações sem `submit=true` não executam o job nem acessam
+`WINGET_CREATE_GITHUB_TOKEN`.
 
 ### PRs de terceiros
 
@@ -57,10 +59,10 @@ acessam `WINGET_CREATE_GITHUB_TOKEN`.
 ### PRs do próprio mantenedor
 
 O GitHub não permite registrar uma review `Approve` no próprio PR. O mantenedor
-pode integrar seu PR pela exceção de revisão de `main-maintainer-only`,
-registrando no PR a decisão e as evidências. A exceção **não** dispensa os
-checks, a atualização da branch, a resolução das conversas ou a exigência de PR
-de `main-integrity`; ela não permite push direto, force-push ou exclusão.
+pode integrar seu PR pela exceção de revisão de `gw-main-review`,
+registrando no PR a decisão e as evidências. A exceção **não** dispensa o
+check `Result`, a atualização da branch ou as regras de `gw-main-integrity`;
+ela não permite push direto, force-push ou exclusão.
 
 Tecnicamente, a exceção também permite ao mantenedor integrar um PR de terceiro
 sem review formal; a política do projeto é registrar a aprovação nesses casos.
@@ -72,7 +74,8 @@ A exceção está vinculada ao papel `RepositoryRole: Admin` (ID `5`), e não a
 um usuário individual. Na consulta de 2026-10-22, `@lzocateli` era o único
 colaborador administrador. **Não adicione outro administrador** sem revisar
 essa política: ele herdaria a exceção e poderia alterar os rulesets. Nenhum
-bot ou GitHub App foi incluído na lista de bypass.
+bot ou GitHub App foi incluído no bypass dos rulesets da `main`; o GitHub App
+`Altivy Release` tem bypass somente em `gw-release-tags`.
 
 O proprietário ainda pode editar ou remover regras nas configurações. Portanto,
 essa é uma proteção operacional, não uma barreira contra comprometimento da
@@ -107,8 +110,8 @@ O [plano de remediação pós-F9](../docs/plano-remediacao-governanca.md) organi
 essas pendências e seus critérios de aceite.
 
 Publicação e aprovação do Environment `release` são controles separados do
-merge. Consulte o [processo de release](../docs/release.md); aprovação de um PR
-não autoriza criação de tag ou publicação.
+merge de PRs comuns: somente o merge do Release PR inicia uma release. Consulte o
+[processo de release](../docs/release.md).
 
 ## Verificação e recuperação
 
@@ -117,10 +120,8 @@ ou exceção administrativa ampliada. Na raiz de um clone, com `gh` autenticado
 como proprietário, os comandos abaixo são somente leitura:
 
 ```bash
+groundwork github
 gh api repos/lzocateli/DotnetScope/rulesets
-gh api repos/lzocateli/DotnetScope/rulesets/25638208
-gh api repos/lzocateli/DotnetScope/rulesets/25638218
-gh api repos/lzocateli/DotnetScope/rulesets/25666467
 gh api repos/lzocateli/DotnetScope/rules/branches/main
 gh api repos/lzocateli/DotnetScope/rules/tags/v0.0.0
 gh api repos/lzocateli/DotnetScope/environments/winget
@@ -130,10 +131,11 @@ gh api repos/lzocateli/DotnetScope/private-vulnerability-reporting
 gh api repos/lzocateli/DotnetScope/actions/permissions/fork-pr-contributor-approval
 ```
 
-Resultado esperado: os dois rulesets de branch ativos sobre `refs/heads/main`, primeiro
-sem bypass, segundo com bypass administrativo somente por PR, quatro checks
-vinculados ao GitHub Actions, apenas o proprietário como administrador,
-ruleset de tags `v*` ativo, Environment `winget` com aprovação do mantenedor e
+Resultado esperado: `groundwork github` com código `0`, os dois rulesets `gw-*` de
+branch ativos sobre `refs/heads/main` (o primeiro sem bypass, o segundo com bypass
+administrativo somente por PR), o check `Result` vinculado ao GitHub Actions,
+apenas o proprietário como administrador, `gw-release-tags` ativo com bypass
+somente do App, Environment `winget` com aprovação do mantenedor e
 branches/tags `main`/`v*`, relatos privados habilitados e
 `all_external_contributors` para workflows.
 

@@ -1,0 +1,7 @@
+[
+  { "name": "type:bug", "color": "d73a4a", "description": "Defeito reproduzível" },
+  { "name": "type:feature", "color": "a2eeef", "description": "Funcionalidade ou melhoria proposta" },
+  { "name": "type:task", "color": "0075ca", "description": "Manutenção técnica ou tarefa definida" },
+  { "name": "type:spike", "color": "d876e3", "description": "Investigação ou decisão a esclarecer" },
+  { "name": "status:triage", "color": "fbca04", "description": "Aguarda triagem do mantenedor" }
+]

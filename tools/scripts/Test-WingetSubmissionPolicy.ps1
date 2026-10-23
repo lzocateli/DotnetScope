@@ -3,8 +3,8 @@
 Testa a matriz de origens permitidas para submissão winget.
 
 .DESCRIPTION
-Usa decisões sintéticas para evento push, workflow_dispatch, PR e execução
-sem submissão. Não acessa o GitHub nem submete manifestos.
+Usa decisões sintéticas para post-release (push em main), republish na tag,
+workflow_dispatch, PR e execução sem submissão. Não acessa o GitHub nem submete manifestos.
 
 .PARAMETER RemainingArguments
 Aceita somente --help; outros valores retornam erro de uso.
@@ -33,12 +33,15 @@ if ($RemainingArguments.Count -gt 0) {
 
 Import-Module (Join-Path $PSScriptRoot 'ReleaseGovernance.psm1') -Force
 $cases = @(
-    @{ EventName = 'push'; Ref = 'refs/tags/v1.2.3'; Version = '1.2.3'; Submit = $true; Expected = $true }
+    @{ EventName = 'push'; Ref = 'refs/heads/main'; Version = '1.2.3'; Submit = $true; Expected = $true }
     @{ EventName = 'workflow_dispatch'; Ref = 'refs/heads/main'; Version = '1.2.3'; Submit = $true; Expected = $true }
+    @{ EventName = 'workflow_dispatch'; Ref = 'refs/tags/v1.2.3'; Version = '1.2.3'; Submit = $true; Expected = $true }
     @{ EventName = 'workflow_dispatch'; Ref = 'refs/heads/main'; Version = '1.2.3'; Submit = $false; Expected = $true }
     @{ EventName = 'pull_request'; Ref = 'refs/pull/12/merge'; Version = '1.2.3'; Submit = $false; Expected = $true }
     @{ EventName = 'workflow_dispatch'; Ref = 'refs/heads/feature'; Version = '1.2.3'; Submit = $true; Expected = $false }
-    @{ EventName = 'push'; Ref = 'refs/tags/v1.2.4'; Version = '1.2.3'; Submit = $true; Expected = $false }
+    @{ EventName = 'push'; Ref = 'refs/heads/feature'; Version = '1.2.3'; Submit = $true; Expected = $false }
+    @{ EventName = 'push'; Ref = 'refs/tags/v1.2.3'; Version = '1.2.3'; Submit = $true; Expected = $false }
+    @{ EventName = 'workflow_dispatch'; Ref = 'refs/tags/v1.2.4'; Version = '1.2.3'; Submit = $true; Expected = $false }
     @{ EventName = 'workflow_dispatch'; Ref = 'refs/heads/main'; Version = '1.2.3-rc.1'; Submit = $true; Expected = $false }
     @{ EventName = 'pull_request'; Ref = 'refs/pull/12/merge'; Version = '1.2.3'; Submit = $true; Expected = $false }
 )
@@ -54,4 +57,4 @@ foreach ($case in $cases) {
     }
 }
 
-Write-Output 'Aprovado: push automático, dispatch manual, sem submissão, PR, origem inválida e recusa.'
+Write-Output 'Aprovado: post-release em main, republish na tag, dispatch manual, sem submissão, PR, origem inválida e recusa.'

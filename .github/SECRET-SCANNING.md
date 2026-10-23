@@ -1,7 +1,8 @@
 # Detecção de secrets
 
 Este repositório bloqueia secrets em duas camadas complementares: um hook local para o
-diff staged e o check obrigatório `Gitleaks / Full History` para todo o histórico
+diff staged e o job `Gitleaks / Full History` (workflow gerenciado `gw-gitleaks.yml`,
+agregado ao check obrigatório `Result` do `ci.yml`) para todo o histórico
 Git alcançável no runner. Ambos executam exclusivamente a imagem fixada
 `docker.io/lzocateli/gitleaks:8.30.1` por Docker ou Podman (rootless). A variável
 `DOTNETSCOPE_CONTAINER_ENGINE` (`docker` ou `podman`) força o engine local;
@@ -78,8 +79,8 @@ arquivo no commit atual não elimina um secret já presente no histórico.
 
 ## Checklist administrativo
 
-- [x] Exigir o check `Full History` do workflow `Gitleaks` no ruleset de
-  `main` (confirmado pela API em 2026-10-22; ver [governança](GOVERNANCE.md)).
+- [ ] Exigir o check `Result`, que agrega `Gitleaks / Full History`, no ruleset
+  `gw-main-integrity` (aplicado por `groundwork github --sync`; ver [governança](GOVERNANCE.md)).
 - [x] Habilitar secret scanning e push protection nativos do GitHub
   (ambos confirmados pela API em 2026-10-22).
 - [ ] Confirmar `core.hooksPath=.githooks` nos clones administrativos.
