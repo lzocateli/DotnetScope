@@ -1,7 +1,7 @@
 name: Winget
 
 # Gera, valida e (opcionalmente) submete o manifesto winget lzocateli.DotnetScope.
-# - workflow_call (release.yml, tags sem sufixo): valida e submete a versao publicada.
+# - workflow_call (post-release.yml, depois que a release foi publicada): valida e submete.
 # - workflow_dispatch: valida a versao informada; submit=true envia o PR (ex.: primeira
 #   submissao ou reenvio apos falha), a partir de main.
 # - pull_request que altera a cadeia do winget: valida com a ultima release, sem submeter.

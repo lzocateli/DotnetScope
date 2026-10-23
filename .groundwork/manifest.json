@@ -1,21 +1,42 @@
 {
   "schemaVersion": 1,
-  "toolVersion": "0.1.0",
-  "catalogVersion": "2026.10.0",
+  "toolVersion": "0.4.0",
+  "catalogVersion": "0.4.0",
   "parameters": {
+    "auto_deploy_environment": "",
     "commit_scopes": "cli,core,metadata,install,env,platform,linux,windows,macos,packaging,tests,docs,tooling,deps,actions,repo",
+    "default_branch": "main",
+    "dependabot_ecosystems": "github-actions,nuget,docker:/tools/build",
+    "deploy_environments": "",
+    "deploy_reviewers": "lzocateli",
+    "dotnet_sdk_image": "lzocateli/dotnet-sdk:10.0.402-noble-v1",
+    "dotnet_solution": "",
     "github_owner": "lzocateli",
     "github_repo": "DotnetScope",
+    "initial_version": "0.4.0",
     "issue_areas": "CLI,Resolu\u00E7\u00E3o de vers\u00F5es,Instala\u00E7\u00E3o,Ambiente e PATH,Linux,Windows,macOS,Seguran\u00E7a,Empacotamento,CI/CD,Documenta\u00E7\u00E3o,Testes",
+    "legacy_rulesets": "main-integrity,main-maintainer-only,release-tags-protected",
     "license": "MIT",
     "project_description": "O DotnetScope \u00E9 uma CLI Native AOT que instala, lista, valida e remove SDKs e runtimes .NET nos escopos user e global, com verifica\u00E7\u00E3o de integridade e configura\u00E7\u00E3o opcional do ambiente do usu\u00E1rio.",
     "project_name": "DotnetScope",
     "project_slug": "dotnetscope",
-    "secrets_dir_name": "DotnetScope"
+    "publish_snapshots": "false",
+    "release_app_id": "5441343",
+    "release_reviewers": "lzocateli",
+    "release_type": "simple",
+    "require_signed_commits": "false",
+    "required_approvals": "1",
+    "secrets_dir_name": "DotnetScope",
+    "version_files": "Directory.Build.props"
   },
   "components": [
     "core",
-    "secret-scanning"
+    "secret-scanning",
+    "ci",
+    "release",
+    "publish-github-assets",
+    "dependency-updates",
+    "repository-policy"
   ],
   "files": {
     ".gitattributes": {
@@ -29,6 +50,10 @@
     ".github/ADR_TEMPLATE.md": {
       "component": "core",
       "sha256": "fd2950265886441f484fb56783a0a3ba21097fef633a5da7119c956b1768267b"
+    },
+    ".github/CI-CD.md": {
+      "component": "ci",
+      "sha256": "0a6b1c1559f6b811c6e4bed0c4e5924409f82c7ad505d2a6a8ae9dd890338da7"
     },
     ".github/CODEOWNERS": {
       "component": "core",
@@ -66,6 +91,10 @@
       "component": "core",
       "sha256": "0db82f6dc26491a5f6c337e5522bd432e3e49a2cbd9aab9172b99822285e8062"
     },
+    ".github/REPOSITORY-POLICY.md": {
+      "component": "repository-policy",
+      "sha256": "77fd3a3471a5765584a06b61aada38933d7b193dff8c1c1f61fc02983e235545"
+    },
     ".github/SECRET-SCANNING.md": {
       "component": "secret-scanning",
       "sha256": "83f681132cf745398c644074b56ceb9e64b9b5716e78259f68b7dad7cf761542"
@@ -86,13 +115,81 @@
       "component": "core",
       "sha256": "3a2623ee347bc97510f040c2d9a426b88bfe4448a98c51fe2d1447a12aa19c14"
     },
-    ".github/workflows/gitleaks.yml": {
-      "component": "secret-scanning",
-      "sha256": "0f80a5552db145fc0901bf358459c008df10482f05fff2b8e07463f5433c2bf4"
+    ".github/labels.json": {
+      "component": "core",
+      "sha256": "85c0f3bb5a6d53088ed2604d8e75254b6397d0530ca7e4ec90145c8937fbd182"
+    },
+    ".github/repository-policy.json": {
+      "component": "repository-policy",
+      "sha256": "7e1eefbde536adccf4338d220fa874ebf7919bb759fba47b4078dbd1de2572a6"
+    },
+    ".github/workflows/gw-dotnet.yml": {
+      "component": "ci",
+      "sha256": "78bd46ca2ef0bccbac37549e1167b34512e4117f3e4cfcd89a47714d9c5c8aa0"
+    },
+    ".github/workflows/gw-github-assets.yml": {
+      "component": "publish-github-assets",
+      "sha256": "c70f20dfbacc327c343fd555992cbb8ce607bbee02937168d7d937f3bb983c4b"
+    },
+    ".github/workflows/gw-gitleaks.yml": {
+      "component": "ci",
+      "sha256": "4a1cf6b0ca1225468c58ec1f555eb2d3a60ab1d62a081b305a33331d44418047"
+    },
+    ".github/workflows/gw-node.yml": {
+      "component": "ci",
+      "sha256": "d1dd2d5eb4b5997fd92d77056ba6355b413717a05c2d693c5d1e1c8f89297546"
+    },
+    ".github/workflows/gw-pr-hygiene.yml": {
+      "component": "ci",
+      "sha256": "b884f9ddac4a9ea19006c06269c76e3032572c30a4b17e630543fe13cbb88ca9"
+    },
+    ".github/workflows/gw-release.yml": {
+      "component": "release",
+      "sha256": "cd884359cc0eafea8bd7c75ab96606c7fd88c3a2095d77ed8dafea66826a097c"
     },
     ".gitleaks.toml": {
       "component": "secret-scanning",
       "sha256": "de9544e772d44eec8cdbd1163e428c07d160821967075916034ff339d18e0285"
+    },
+    "docs/runbooks/release.md": {
+      "component": "release",
+      "sha256": "e938733dbac7a0df79753d75979a2ee1481d878cdd821f3c42c7440b255cceb9"
+    },
+    "tools/scripts/ci/Assert-ArtifactVersion.ps1": {
+      "component": "release",
+      "sha256": "0fca851b62cfaab991da7367bb94dd5aef3d2d8775f85d37a1442ff0bf40374f"
+    },
+    "tools/scripts/ci/Assert-ReleaseTag.ps1": {
+      "component": "release",
+      "sha256": "5a28cce85718d55573e2c935503bfc672a216a478e5058e8b4b17641003bb458"
+    },
+    "tools/scripts/ci/Get-BuildVersion.ps1": {
+      "component": "release",
+      "sha256": "9f00894b538b2f833db672ee23f310e1ded32c2127db0e7eaed798742614f9ca"
+    },
+    "tools/scripts/ci/GroundworkRelease.psm1": {
+      "component": "release",
+      "sha256": "64108e3406d38dd2de8c5c51faec0cd09b17b077f2b8bbf5ceb96fda830d1e18"
+    },
+    "tools/scripts/ci/New-ReleaseManifest.ps1": {
+      "component": "release",
+      "sha256": "7a175f4edba84cbe33820372bbe249a64e8ca3da0e5e28c3a081eba2a3b4d06e"
+    },
+    "tools/scripts/ci/Publish-ReleaseAssets.ps1": {
+      "component": "publish-github-assets",
+      "sha256": "45d8381cb22ca825e25c921b2ea5224debdeb2abd7a1aa97631a81b0dd9b084a"
+    },
+    "tools/scripts/ci/Test-ManagedFiles.ps1": {
+      "component": "ci",
+      "sha256": "55516208cd8ea7d550fecde7d0a4891d9f550e18f96d7a28a4e3e39776f0efc5"
+    },
+    "tools/scripts/ci/Test-PublishedRelease.ps1": {
+      "component": "release",
+      "sha256": "6794e5f375e7f17ad5c8f1b871e71f9f5bc833cdf6be9472ea2ee930eedd288a"
+    },
+    "tools/scripts/ci/Test-PullRequestTitle.ps1": {
+      "component": "ci",
+      "sha256": "bc0273227b343cfa1089a945d4f4ed38963d76e5a99f637b923d9d339bc8f7fa"
     },
     "tools/scripts/install-gitleaks-hook.ps1": {
       "component": "secret-scanning",

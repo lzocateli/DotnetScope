@@ -16,7 +16,8 @@ applyTo: ".github/workflows/**, .github/dependabot.yml, .github/release.yml"
 - E2E de cada RID roda o binário publicado em ambiente limpo, sem .NET pré-instalado.
 - Release gera arquivos `tar.gz`/`zip`, `.deb`, instaladores, `SHA256SUMS`, SBOM e atestações Sigstore keyless de proveniência e SBOM. Authenticode e Developer ID dos binários próprios estão fora da F9 sem custo; não os confunda com a verificação de assinatura dos instaladores oficiais da Microsoft.
 - Artefatos publicados devem ser imutáveis; a limitação atual de reexecução está registrada no [processo de release](../../docs/release.md#limitações-conhecidas).
-- Versões seguem SemVer; tags `vX.Y.Z` disparam publicação somente após aprovação no Environment `release`.
+- Versões seguem SemVer e são calculadas pelo release-please a partir de Conventional Commits; a tag `vX.Y.Z` é criada pelo GitHub App de release no merge humano do Release PR, e a publicação ocorre somente após aprovação no Environment `release` (ver [CI-CD](../CI-CD.md)).
+- Workflows `gw-*` e scripts de `tools/scripts/ci/` são gerenciados pelo Altivy.Groundwork: não os edite; `publish.yml`, `post-release.yml`, `ci.yml` e `winget.yml` pertencem ao projeto.
 - Cacheie somente conteúdo reprodutível; restore usa lock file em modo travado.
 - Não adicione workflow antes de existir comando local equivalente e validado em `tools/scripts/`.
 - Workflows de E2E que alteram perfil, registro ou `PATH` usam apenas runners efêmeros ou containers.

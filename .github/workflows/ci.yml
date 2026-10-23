@@ -1,9 +1,11 @@
-name: PR Validation
+# Semente do Altivy.Groundwork (componente ci): pertence ao projeto.
+# Jobs do DotnetScope (antigo pr-validation.yml) mais higiene e Gitleaks gerenciados. Todo job
+# novo entra em "needs" do job Result, o ÚNICO check obrigatório da main (ver .github/CI-CD.md).
+name: CI
 
 on:
   pull_request:
-    branches:
-      - main
+    types: [opened, synchronize, reopened, edited]
   push:
     branches:
       - main
@@ -11,11 +13,25 @@ on:
 
 permissions: {}
 
+# Em PRs, uma execução nova espera a anterior: cancelar uma execução em andamento deixa um check
+# Result com falha no mesmo commit, e o ruleset considera todas as execuções do check, bloqueando o merge.
 concurrency:
-  group: pr-validation-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'pull_request' }}
 
 jobs:
+  hygiene:
+    name: Hygiene
+    uses: ./.github/workflows/gw-pr-hygiene.yml
+    permissions:
+      contents: read
+
+  gitleaks:
+    name: Gitleaks
+    uses: ./.github/workflows/gw-gitleaks.yml
+    permissions:
+      contents: read
+
   validate:
     name: Build, tests and Native AOT (linux-x64)
     runs-on: ubuntu-24.04
@@ -81,3 +97,24 @@ jobs:
       - name: Validate on host
         shell: pwsh
         run: ./tools/scripts/Invoke-Validation.ps1 -Native -Aot
+
+  result:
+    name: Result
+    if: ${{ always() }}
+    needs: [hygiene, gitleaks, validate, validate-windows, validate-macos]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Evaluate required jobs
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key)=\(.value.result)"' <<<"$NEEDS")
+          if [[ -n "$failed" ]]; then
+            echo "::error::Jobs obrigatórios sem sucesso: ${failed//$'\n'/, }"
+            exit 1
+          fi
+          echo "Todos os jobs obrigatórios terminaram com sucesso."

@@ -3,9 +3,10 @@
 Valida a origem de uma submissão ao winget antes de acessar o Environment.
 
 .DESCRIPTION
-Permite submit=true somente em workflow_dispatch executado em main ou no evento
-push da tag vX.Y.Z correspondente à versão do manifesto, usado pelo workflow
-reutilizável de release. Se submit=false, nenhuma submissão é autorizada.
+Permite submit=true somente em workflow_dispatch executado em main, no evento
+push em main do gw-release.yml (post-release, depois que a release foi publicada)
+ou no workflow_dispatch do modo republish na tag vX.Y.Z correspondente à versão
+do manifesto. Se submit=false, nenhuma submissão é autorizada.
 
 .PARAMETER EventName
 Nome do evento GitHub Actions.
