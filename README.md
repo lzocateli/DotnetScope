@@ -119,12 +119,24 @@ regras de coexistência da [CLI](docs/cli.md).
 ## Desenvolvimento
 
 - .NET 10 (SDK 10.0.400+) com Native AOT; build e testes executam em containers.
+- A suíte usa xUnit 4 com Microsoft Testing Platform (MTP), selecionado no
+  `global.json`; não usa os adapters VSTest. Dentro do container ou de um
+  runner efêmero, execute `dotnet test --solution DotnetScope.slnx`.
+  Para selecionar testes, use `--filter-class '*NomeDaClasse*'` ou
+  `--filter-trait 'Nome=Valor'`. No Windows, a validação exclui
+  `--filter-not-trait 'Platform=Unix'`. A descoberta e a depuração pela IDE
+  dependem de suporte a MTP na versão instalada.
 - Valide como no CI (requer PowerShell 7 e Docker ou Podman; `-Aot` publica e
   testa o binário nativo `linux-x64` em `artifacts/aot/linux-x64/`):
 
   ```bash
   pwsh ./tools/scripts/Invoke-Validation.ps1 -Aot
   ```
+
+  Qualquer falha interrompe as etapas seguintes e retorna código diferente de
+  zero. No Docker, a restauração de ownership ocorre também em caso de falha,
+  sem substituir o código da etapa que falhou; falha apenas na limpeza também
+  torna a validação malsucedida.
 
 - E2E real em containers limpos (Ubuntu 24.04 e Fedora 41), após o comando
   acima; baixa os artefatos oficiais:

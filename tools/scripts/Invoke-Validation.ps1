@@ -6,7 +6,8 @@ Valida o DotnetScope em container (ou no host com -Native): restore, formatacao,
 Executa a mesma validacao usada no CI dentro da imagem fixada
 docker.io/lzocateli/dotnet-sdk:10.0.402-noble-v1, montando o repositorio em
 /workspace. Etapas: dotnet restore, dotnet format --verify-no-changes,
-dotnet build -c Release, dotnet test -c Release e, com -Aot, instala clang e
+dotnet build -c Release, dotnet test --solution DotnetScope.slnx -c Release
+com Microsoft Testing Platform e, com -Aot, instala clang e
 zlib1g-dev no container, publica linux-x64 com PublishAot e executa
 'dotnetscope --version' como smoke test.
 
@@ -100,11 +101,11 @@ if ($Native) {
     $nativeSteps = @(
         , @('restore', 'DotnetScope.slnx')
         , @('build', 'DotnetScope.slnx', '--configuration', 'Release', '--no-restore')
-        , @('test', 'DotnetScope.slnx', '--configuration', 'Release', '--no-build')
+        , @('test', '--solution', 'DotnetScope.slnx', '--configuration', 'Release', '--no-build')
     )
     if ($IsWindows) {
         # Classes com host de teste em shell script e modos Unix; o Windows e coberto pelo E2E e por testes proprios.
-        $nativeSteps[2] += @('--filter', 'Platform!=Unix')
+        $nativeSteps[2] += @('--filter-not-trait', 'Platform=Unix')
     }
     if ($Aot) {
         $nativeSteps += , @('publish', 'src/DotnetScope.Cli/DotnetScope.Cli.csproj', '--configuration', 'Release', '--runtime', $hostRid, '--output', "artifacts/aot/$hostRid")
@@ -153,7 +154,7 @@ $steps.Add('set -eu')
 $steps.Add('dotnet restore DotnetScope.slnx')
 $steps.Add('dotnet format DotnetScope.slnx --verify-no-changes --no-restore')
 $steps.Add('dotnet build DotnetScope.slnx --configuration Release --no-restore')
-$steps.Add('dotnet test DotnetScope.slnx --configuration Release --no-build')
+$steps.Add('dotnet test --solution DotnetScope.slnx --configuration Release --no-build')
 if ($Aot) {
     # Sem faixa subordinada (Podman rootless), o APT nao pode usar o usuario _apt nem seus diretorios;
     # sandbox, listas e cache passam a usar root e /tmp dentro do container descartavel.
@@ -169,12 +170,14 @@ $ownerFixup = $null
 if ($containerEngine -eq 'docker' -and ($IsLinux -or $IsMacOS)) {
     $hostUid = (& id -u).Trim()
     $hostGid = (& id -g).Trim()
-    $ownerFixup = "chown -R ${hostUid}:${hostGid} /workspace/artifacts; find /workspace/src /workspace/tests -type d \( -name bin -o -name obj \) -prune -exec chown -R ${hostUid}:${hostGid} {} +"
+    $ownerFixup = "chown -R ${hostUid}:${hostGid} /workspace/artifacts && find /workspace/src /workspace/tests -type d \( -name bin -o -name obj \) -prune -exec chown -R ${hostUid}:${hostGid} {} +"
 }
 
 $script = ($steps -join "`n")
 if ($null -ne $ownerFixup) {
-    $script = "status=0`n( $($steps -join "`n") ) || status=`$?`n$ownerFixup`nexit `$status"
+    # Um processo Bash separado preserva errexit mesmo quando o chamador captura a falha com ||.
+    $escapedScript = $script.Replace("'", "'\''")
+    $script = "status=0`nbash -eu -c '$escapedScript' || status=`$?`n$ownerFixup`ncleanup_status=`$?`nif [ `"`$status`" -eq 0 ]; then status=`$cleanup_status; fi`nexit `"`$status`""
 }
 
 $arguments = @(
