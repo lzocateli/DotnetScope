@@ -50,7 +50,8 @@ literais exigidos pelas ferramentas.
 - Normalize e valide paths (`--install-dir`, `--archive`) antes de qualquer acesso ao filesystem.
 - Não registre tokens, variáveis de ambiente completas, conteúdo de arquivos de perfil ou secrets em logs e saídas.
 - No desenvolvimento local, secrets (por exemplo, chaves de assinatura) ficam exclusivamente em `$env:APPDATA\Microsoft\UserSecrets\DotnetScope\.env` no Windows ou `~/.microsoft/usersecrets/DotnetScope/.env` no Linux/macOS. Nunca crie `.env`, `secrets.json` ou templates com valores reais no repositório e não leia, exiba ou copie esse arquivo durante validações.
-- O hook `.githooks/pre-commit` e o workflow `Gitleaks` são obrigatórios; nunca use `--no-verify`. Consulte [SECRET-SCANNING.md](SECRET-SCANNING.md).
+- O hook `.githooks/pre-commit` e o workflow `gw-gitleaks.yml` são obrigatórios; nunca use `--no-verify`. Consulte [SECRET-SCANNING.md](SECRET-SCANNING.md).
+- Workflows e scripts `gw-*` e `tools/scripts/ci/` são gerenciados pelo Groundwork: não os edite localmente; mudanças vão para o catálogo. Consulte [CI-CD.md](CI-CD.md).
 - Dependências externas exigem licença permissiva, gratuita, versão fixada, manutenção verificada e compatibilidade com Native AOT. Licença ausente, ambígua, copyleft, comercial ou source-available bloqueia a dependência sob a distribuição MIT do DotnetScope.
 - Prefira a BCL; toda dependência nova precisa de justificativa no PR.
 

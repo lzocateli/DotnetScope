@@ -45,7 +45,7 @@
     },
     ".githooks/pre-commit": {
       "component": "secret-scanning",
-      "sha256": "f3b9e07d8e7c2b8c2dfe91f1674fc6a06b025da95eca47d040ec6aeff4aa7008"
+      "sha256": "d408939728e26495f5ba552beb495998b44a5c4383290bd494f9a4c115c998f0"
     },
     ".github/ADR_TEMPLATE.md": {
       "component": "core",
@@ -61,19 +61,19 @@
     },
     ".github/COMMIT_CONVENTIONS.md": {
       "component": "core",
-      "sha256": "ae2ab732b0f9baa40b7074219ee61e14445903225a43234b07cfa5eacefa7f00"
+      "sha256": "01a7c7c6985f35d63637228982a2dbc5adf372305042bea193428eea196a590c"
     },
     ".github/CONTRIBUTING.md": {
       "component": "core",
-      "sha256": "698b0a7cbaf0dabf5fdba3c582de4e85cf279a9234708e666f43305f650b270d"
+      "sha256": "90598ee447efce06ea0b55c0a31e84bd523918864a1ccc0d70a74e6e4d212caa"
     },
     ".github/ISSUE_TEMPLATE/architecture-spike.yml": {
       "component": "core",
-      "sha256": "d5447ca8dc6bdd615dac0a7e3f7fcbf706d51aad882f9592057ee32d1184abd1"
+      "sha256": "3fa7487ef8061910bcf619db61eaeef7b2739b730760d3ad8e917fc4d69faf11"
     },
     ".github/ISSUE_TEMPLATE/bug.yml": {
       "component": "core",
-      "sha256": "4772c71332d0aed455255ec5ddf698ccc17fcefdd59c4ff3041d67ad4b0192d6"
+      "sha256": "a3055b43000eef0cbcfdb2da4fa1ba7bc48dbe8449af872d3145f98d892e7afa"
     },
     ".github/ISSUE_TEMPLATE/config.yml": {
       "component": "core",
@@ -81,11 +81,11 @@
     },
     ".github/ISSUE_TEMPLATE/feature.yml": {
       "component": "core",
-      "sha256": "2cbed2635f25dad170b903215607fac078184c55010c89899586b6c69fe49a8f"
+      "sha256": "3a278e7c3d5e7d5c6698f96b6324eaace14dff22e5b56630e2b22ddebe00f7fd"
     },
     ".github/ISSUE_TEMPLATE/technical-task.yml": {
       "component": "core",
-      "sha256": "5a1a2771d23e745ae6a715f27cf5c30b434f0c952d2cc15f089b4f8fddb08036"
+      "sha256": "bacf1e37fbe5d8b9914d98f4814e825cec67ede7d11e84d4f4902be1bc5cbd8a"
     },
     ".github/PULL_REQUEST_TEMPLATE.md": {
       "component": "core",
@@ -97,15 +97,15 @@
     },
     ".github/SECRET-SCANNING.md": {
       "component": "secret-scanning",
-      "sha256": "83f681132cf745398c644074b56ceb9e64b9b5716e78259f68b7dad7cf761542"
+      "sha256": "8a40b4795a3efe8134262a18ba40e7663dec158f9dc4c53f52daee93c00c8559"
     },
     ".github/SECURITY.md": {
       "component": "core",
-      "sha256": "7551e7f89002e570d513fd4d50c00e19ef3064886932a973a3c805363dd50cf8"
+      "sha256": "505347fb5ffcacfd3cf5620fbcfe411bf17d05a53dd865d89b91160ec6cceea3"
     },
     ".github/copilot-instructions.md": {
       "component": "core",
-      "sha256": "99460e28b6b71b2da93005e7a64bb99b61ac6588b00b7958783d92aa199b46e6"
+      "sha256": "c027a4b5301c55a59a5b58026ed847c3b14aa00f0767680ac09676b28191d82a"
     },
     ".github/instructions/conventional-commits.instructions.md": {
       "component": "core",
@@ -113,7 +113,7 @@
     },
     ".github/instructions/documentation.instructions.md": {
       "component": "core",
-      "sha256": "3a2623ee347bc97510f040c2d9a426b88bfe4448a98c51fe2d1447a12aa19c14"
+      "sha256": "40821c312da34b89ec88b63873136db795bbe9467d63228a8d59ce583edd7919"
     },
     ".github/labels.json": {
       "component": "core",
@@ -193,11 +193,11 @@
     },
     "tools/scripts/install-gitleaks-hook.ps1": {
       "component": "secret-scanning",
-      "sha256": "6401236e502918a354c5f27c04076f0f5e35ab78c5aba6ee8c30446097da4ee7"
+      "sha256": "b7e6b19d0fd47cfa272a331e849b86ac3dea77f64b6088efe6321a2a588774a3"
     },
     "tools/scripts/test-gitleaks.ps1": {
       "component": "secret-scanning",
-      "sha256": "3cc2b432dacfc5af167508c20efc8557774f614ac67338987a2a090360c89502"
+      "sha256": "0f9c49397ccbfa677d4be2d0ed40f73fbd248997150ebefc651a779d9e96c52b"
     }
   }
 }

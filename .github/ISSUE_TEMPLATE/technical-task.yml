@@ -1,11 +1,11 @@
 name: Tarefa técnica
 description: Registre manutenção técnica com resultado verificável
 title: "[Task]: "
-labels: ["enhancement"]
+labels: ["enhancement", "type:task", "status:triage"]
 body:
   - type: markdown
     attributes:
-      value: "Intake apenas: esta Issue não autoriza execução. Vincule a fase de docs/plano-implementacao.md quando aplicável; a execução exige escopo revisado e autorização explícita do mantenedor."
+      value: "Intake apenas: esta Issue não autoriza execução. Vincule a fase de docs/plano-implementacao.md quando aplicável; a execução exige escopo revisado e autorização explícita do mantenedor. Registre critérios de aceite, limites e evidências no PR vinculado."
   - type: textarea
     id: objective
     attributes:

@@ -56,9 +56,10 @@ O hook envia `git diff --cached --no-ext-diff --no-textconv` ao Gitleaks por
 `stdin`. Ele não lê arquivos fora do índice e falha fechado quando nem Docker nem
 Podman estão disponíveis.
 
-O workflow faz checkout com histórico completo e usa o Git do runner para enviar
-`git log --all --full-history -p --` ao mesmo scanner por `stdin`. A imagem é
-minimalista e não precisa conter o executável `git`.
+O workflow `.github/workflows/gw-gitleaks.yml`, distribuído pelo componente `ci`
+e chamado pelo `ci.yml` do projeto, faz checkout com histórico completo e usa o
+Git do runner para enviar `git log --all --full-history -p --` ao mesmo scanner
+por `stdin`. A imagem é minimalista e não precisa conter o executável `git`.
 
 ## Tratamento de achados
 
