@@ -5,7 +5,7 @@
 
   <ItemGroup>
     <!-- Licenças verificadas no nuspec da versão exata: System.CommandLine MIT, xunit.v3.mtp-v2 Apache-2.0. -->
-    <PackageVersion Include="System.CommandLine" Version="2.0.13" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.14" />
     <PackageVersion Include="xunit.v3.mtp-v2" Version="4.0.2" />
   </ItemGroup>
 </Project>
