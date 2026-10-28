@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/lzocateli/DotnetScope/compare/v0.5.0...v0.5.1) (2026-10-28)
+
+
+### Corrigido
+
+* Bump the nuget-production group with 1 update ([#27](https://github.com/lzocateli/DotnetScope/issues/27)) ([862c7ec](https://github.com/lzocateli/DotnetScope/commit/862c7ec50ae5fe5dc5e85c0f6895ffab8cb235a1))
+
 ## [0.5.0](https://github.com/lzocateli/DotnetScope/compare/v0.4.0...v0.5.0) (2026-10-23)
 
 
