@@ -1,11 +1,25 @@
-# DotnetScope
+# DotnetScope — gerenciador de SDKs e runtimes .NET
+
+[![Release](https://img.shields.io/github/v/release/lzocateli/DotnetScope?sort=semver)](https://github.com/lzocateli/DotnetScope/releases/latest)
+[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
+![Plataformas: Linux, Windows e macOS](https://img.shields.io/badge/plataformas-Linux%20%7C%20Windows%20%7C%20macOS-informational)
 
 CLI Native AOT (`dotnetscope`) para instalar, listar, validar e remover SDKs e
 runtimes .NET nos escopos `user` e `global`, com verificação de integridade,
 extração segura e configuração de `DOTNET_ROOT` e `PATH` no perfil do usuário.
 
+**Para quem é:** desenvolvedores e equipes de plataforma que precisam instalar
+o .NET em máquinas e containers sem .NET prévio, manter várias versões do SDK
+lado a lado ou instalar exatamente o SDK pedido pelo `global.json` de um
+projeto. Um único binário resolve canais (`lts`, `10.0`, `10.0.4xx`), confere o
+SHA-512 dos artefatos oficiais da Microsoft, configura o ambiente e desfaz o que
+configurou. O DotnetScope não é uma ferramenta oficial da Microsoft; se o
+instalador do sistema operacional ou o
+[`dotnet-install`](https://learn.microsoft.com/dotnet/core/tools/dotnet-install-script)
+já atendem ao seu caso, eles continuam sendo opções válidas.
+
 > **Estado:** em desenvolvimento, pré-1.0; fases F0 a F9 entregues.
-> Release atual: [v0.4.0](https://github.com/lzocateli/DotnetScope/releases/tag/v0.4.0).
+> Release atual: [última versão publicada](https://github.com/lzocateli/DotnetScope/releases/latest).
 > Implementado em Linux, Windows e macOS, nos escopos user e global:
 > `list --available|--installed`,
 > `install` (inclusive `--archive` e `--from-global-json`), `uninstall`, `env` e

@@ -5,7 +5,7 @@
 | Estado | proposto para revisão; execução das fases não autorizada |
 | Origem | IA assistida |
 | Revisor humano | Lincoln Zocateli; revisão pendente |
-| Decisão posterior | arquitetura de manutenção das traduções da seção 3.4 confirmada pelo mantenedor em 2026-10-22; implementação não iniciada |
+| Decisão posterior | arquitetura de manutenção das traduções da seção 3.4 confirmada pelo mantenedor em 2026-10-22; execução de I1 solicitada pelo mantenedor em 2026-10-27 (seção 10) |
 | Data da avaliação | 2026-10-22 |
 | Solicitação | planejar documentação em pt-BR, inglês e espanhol, visibilidade na comunidade .NET e melhorias para descoberta no Google e Bing |
 | Repositório | <https://github.com/lzocateli/DotnetScope> |
@@ -660,9 +660,22 @@ Consultadas em 2026-10-22; revalidar instruções dos serviços antes de executa
 
 ## 10. Estado deste plano
 
-Somente o documento de planejamento foi criado e atualizado. A arquitetura da
-seção 3.4 foi confirmada pelo mantenedor; a revisão do restante permanece pendente.
+A arquitetura da seção 3.4 foi confirmada pelo mantenedor; a revisão do restante
+permanece pendente.
+
+Em 2026-10-27, o mantenedor solicitou: “inclua os dados necessários nesse
+repositório para SEO”. Esse pedido autorizou o recorte de I1 abaixo, sem I0:
+
+| Entrega de I1 | Estado |
+| --- | --- |
+| Descrição curta em inglês no repositório | aplicada pela API do GitHub |
+| Tópicos pertinentes | aplicados pela API do GitHub; sem `dotnet-tool`, pois não há pacote NuGet |
+| Apresentação do README pt-BR | público, problema resolvido, limites e badges; link da release aponta para a última versão |
+| Imagem social | [`docs/assets/social-preview.png`](assets/social-preview.png) (1280×640, fonte em SVG); o envio em *Settings → Social preview* é manual, pois a API não o oferece |
+| Homepage | vazia até existir site publicado e validado (I6) |
+| Demonstração curta | pendente |
+
 Nenhuma skill, instrução, script, hook ou workflow foi implementado, e nenhuma
-tradução, alteração remota, configuração de buscadores, publicação ou mudança de
-comportamento foi executada. Fases I0–I9 aguardam revisão de escopo e autorização
-específica para execução.
+tradução, site, configuração de buscadores ou mudança de comportamento foi
+executada. As fases I0 e I2–I9 continuam aguardando revisão de escopo e
+autorização específica.

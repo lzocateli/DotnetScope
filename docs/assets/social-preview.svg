@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="t d">
+  <title id="t">DotnetScope</title>
+  <desc id="d">CLI Native AOT para instalar, listar, verificar e remover SDKs e runtimes .NET no Linux, Windows e macOS.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b1035"/>
+      <stop offset="1" stop-color="#0d1117"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect x="80" y="96" width="12" height="148" rx="6" fill="#a78bfa"/>
+  <text x="120" y="170" fill="#ffffff" font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="84" font-weight="700">DotnetScope</text>
+  <text x="122" y="232" fill="#c4b5fd" font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="34">.NET SDK and runtime manager CLI</text>
+  <g font-family="DejaVu Sans Mono, Liberation Mono, monospace" font-size="30">
+    <rect x="80" y="300" width="1120" height="176" rx="16" fill="#0b0f14" stroke="#30363d" stroke-width="2"/>
+    <text x="116" y="362" fill="#8b949e">$ <tspan fill="#e6edf3">dotnetscope install sdk lts --yes</tspan></text>
+    <text x="116" y="412" fill="#8b949e">$ <tspan fill="#e6edf3">dotnetscope install --from-global-json</tspan></text>
+    <text x="116" y="452" fill="#8b949e" font-size="24">  # SHA-512 verified · DOTNET_ROOT and PATH configured</text>
+  </g>
+  <text x="80" y="556" fill="#e6edf3" font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="28">Linux · Windows · macOS  —  Native AOT, no .NET required</text>
+  <text x="80" y="600" fill="#8b949e" font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="24">github.com/lzocateli/DotnetScope · MIT</text>
+</svg>
