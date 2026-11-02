@@ -48,6 +48,35 @@ jobs:
             --volume "$GITHUB_WORKSPACE:/repo:ro" --workdir /repo \
             docker.io/rhysd/actionlint:1.7.12 -color
 
+  preview-gate:
+    name: Preview gate
+    # Release PR (docs/estrategia-de-release.md): exige candidata vX.Y.Z-rc.N validada no Environment de preview.
+    # Sem o componente release-preview, o script não existe e o job passa.
+    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--branches--') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Release PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require a validated candidate
+        if: ${{ hashFiles('tools/scripts/ci/Assert-PreviewGate.ps1') != '' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_COMMIT: ${{ github.event.pull_request.head.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: >
+          ./tools/scripts/ci/Assert-PreviewGate.ps1 -HeadRef $env:HEAD_REF -HeadCommit $env:HEAD_COMMIT
+          -Repository $env:GITHUB_REPOSITORY -DefaultBranch $env:DEFAULT_BRANCH -SummaryPath $env:GITHUB_STEP_SUMMARY
+
   managed-files:
     name: Managed files
     runs-on: ubuntu-24.04

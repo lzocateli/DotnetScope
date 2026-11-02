@@ -10,6 +10,39 @@ Native AOT para todos os RIDs suportados e o
 Homebrew e pelo winget. Cada etapa tem um comando local equivalente em
 `tools/scripts/`.
 
+## Candidata obrigatória (release preview)
+
+Toda estável `vX.Y.Z` é precedida por uma candidata `vX.Y.Z-rc.N`, validada no
+Environment `quality` (estratégia completa em
+[estrategia-de-release](estrategia-de-release.md) e passo a passo em
+[runbooks/release-preview](runbooks/release-preview.md)). O check `Preview gate`, dentro
+do `Result`, impede o merge do Release PR até que a candidata do commit-base dele esteja
+aceita.
+
+1. Com o Release PR aberto, dispare a candidata na `main`:
+
+   ```bash
+   gh workflow run gw-preview.yml --repo lzocateli/DotnetScope --ref main
+   ```
+
+2. Aprove o Environment `release`. O `gw-preview.yml` cria a tag `vX.Y.Z-rc.N` pelo
+   GitHub App `Altivy Release` e chama o mesmo `publish.yml` da estável: build Native
+   AOT dos sete RIDs com a versão da tag, smoke, testes dos instaladores, SBOMs e
+   assets. A candidata é publicada como **Pre-release**, sem `Latest`, com o
+   `release-manifest.json` atestado; Homebrew e winget não são atualizados.
+3. Baixe e teste a candidata nas máquinas de teste. `dotnetscope --version` mostra
+   `X.Y.Z-rc.N`.
+4. Aprove o Environment `quality` no deploy disparado pelo `gw-preview.yml` somente
+   depois de testar. O [`deploy.yml`](../.github/workflows/deploy.yml) confere que os
+   assets publicados são os do manifesto e roda o smoke do pacote `linux-x64`
+   ([deploy-projeto](runbooks/deploy-projeto.md)); com sucesso, o aceite é anexado à
+   prerelease (`preview-acceptance.json`) e o CI do Release PR é reexecutado.
+5. Com o `Preview gate` verde, faça o merge do Release PR.
+
+Uma correção depois da candidata gera `rc.N+1` no próximo disparo. Em emergência, um
+commit com o rodapé `Preview-Waiver: <motivo>` dispensa a candidata; o motivo aparece nas
+notas da release.
+
 ## Artefatos
 
 | Arquivo | Conteúdo |
@@ -121,21 +154,25 @@ consulte a [política de segurança](../.github/SECURITY.md#versões-suportadas)
    `Altivy Release`. O release-please calcula a versão, atualiza `VersionPrefix`
    em `Directory.Build.props`, `.release-please-manifest.json` e o `CHANGELOG.md`.
    Não edite a versão nem crie tags manualmente.
-2. O merge do Release PR pelo mantenedor executa o `gw-release.yml`: o App cria a
+2. Antes do merge, a candidata `vX.Y.Z-rc.N` é publicada e aceita em `quality`
+   (seção [Candidata obrigatória](#candidata-obrigatória-release-preview)); sem isso, o
+   check `Preview gate` do Release PR fica vermelho.
+3. O merge do Release PR pelo mantenedor executa o `gw-release.yml`: o App cria a
    tag `vX.Y.Z` e a GitHub Release em rascunho, e o workflow confere que a tag
    corresponde às versões e que o commit é ancestral de `origin/main`.
-3. O `publish.yml`, na tag, executa build, testes, publicação dos sete RIDs,
+4. O `publish.yml`, na tag, executa build, testes, publicação dos sete RIDs,
    smoke e testes dos instaladores em seis runners.
-4. O job `attest-sbom` atesta o SBOM de cada RID (sujeitos: o pacote e, no
+5. O job `attest-sbom` atesta o SBOM de cada RID (sujeitos: o pacote e, no
    Linux glibc, o `.deb`) antes dos assets, para que a release nunca fique
    pública sem essas atestações.
-5. `Prepare release assets` regenera o `SHA256SUMS` com os instaladores e confere
+6. `Prepare release assets` regenera o `SHA256SUMS` com os instaladores e confere
    os 18 arquivos; `Publish release assets` (`gw-github-assets.yml`) aguarda
    aprovação no Environment `release`, gera a atestação de proveniência e anexa os
    arquivos à release em rascunho, sem sobrescrever asset já publicado.
-6. O `gw-release.yml` gera e atesta o `release-manifest.json` e publica a
-   release. As notas vêm do `CHANGELOG.md` gerado pelo release-please.
-7. Com a release pública, o `post-release.yml`:
+7. O `gw-release.yml` gera e atesta o `release-manifest.json` e publica a
+   release. As notas vêm do `CHANGELOG.md` gerado pelo release-please e trazem a
+   linha "Validada na `vX.Y.Z-rc.N`".
+8. Com a release pública, o `post-release.yml`:
    - no Environment `release` (nova aprovação), executa
      [`Update-HomebrewTap.ps1`](../tools/scripts/Update-HomebrewTap.ps1) com o
      `SHA256SUMS` publicado e envia o commit `dotnetscope X.Y.Z` ao tap. Não faz
@@ -151,7 +188,8 @@ consulte a [política de segurança](../.github/SECURITY.md#versões-suportadas)
 
 Pull requests que alteram a cadeia de release e `workflow_dispatch` do
 `publish.yml` executam build, smoke e testes dos instaladores, sem publicar.
-Prereleases (`vX.Y.Z-sufixo`) não fazem parte do fluxo automático.
+Prereleases que não sejam candidatas `vX.Y.Z-rc.N` não fazem parte do fluxo automático;
+candidatas não executam `post-release.yml` (Homebrew e winget recebem só estáveis).
 
 Se a publicação falhar parcialmente, a release continua em rascunho: corrija a
 causa e use o modo `republish` descrito no [runbook](runbooks/release.md).

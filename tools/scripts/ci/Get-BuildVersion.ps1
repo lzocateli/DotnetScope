@@ -3,21 +3,23 @@
 
 <#
 .SYNOPSIS
-Calcula as versões de build de uma release ou de um snapshot da branch padrão.
+Calcula as versões de build de uma release, de uma candidata ou de um snapshot da branch padrão.
 
 .DESCRIPTION
 release: usa a versão da tag (vX.Y.Z[-pre]), que precisa coincidir com o primeiro
-arquivo de versionFiles em .github/ci-cd.json.
+arquivo de versionFiles em .github/ci-cd.json. Recusa tag de candidata (-rc.N).
+rc: usa a versão da tag de candidata (vX.Y.Z-rc.N), maior que a versão registrada:
+a branch padrão ainda tem a versão anterior, e a nova só entra no merge do Release PR.
 snapshot: usa o próximo patch da versão registrada e o sufixo preview.<RunNumber>;
 snapshots nunca geram tag, GitHub Release nem são aceitos pelo deploy.
 Emite version, version_prefix, version_suffix, assembly_version (Major.0.0.0) e
 file_version (X.Y.Z.Revisão). Somente leitura; não acessa a rede.
 
 .PARAMETER Channel
-release ou snapshot.
+release, rc ou snapshot.
 
 .PARAMETER Tag
-Tag da release (obrigatória no canal release).
+Tag da release ou da candidata (obrigatória nos canais release e rc).
 
 .PARAMETER RunNumber
 Número da execução para snapshots e revisão do FileVersion.
@@ -32,6 +34,9 @@ Arquivo de saída no formato chave=valor (por exemplo $env:GITHUB_OUTPUT).
 ./tools/scripts/ci/Get-BuildVersion.ps1 -Channel release -Tag v1.4.0
 
 .EXAMPLE
+./tools/scripts/ci/Get-BuildVersion.ps1 -Channel rc -Tag v1.4.0-rc.2
+
+.EXAMPLE
 ./tools/scripts/ci/Get-BuildVersion.ps1 -Channel snapshot -RunNumber 42
 
 .NOTES
@@ -43,7 +48,7 @@ Requer PowerShell 7+. Código de saída 0 sucesso, 1 erro e 2 argumento desconhe
 #Requires -Version 7.0
 [CmdletBinding(PositionalBinding = $false)]
 param(
-    [ValidateSet('release', 'snapshot')]
+    [ValidateSet('release', 'rc', 'snapshot')]
     [string] $Channel = 'release',
     [string] $Tag = '',
     [string] $RunNumber = '0',
@@ -76,11 +81,20 @@ try {
     $recorded = Get-VersionFromFile -Path @(Get-ProjectVersionFiles -Config $config)[0]
     if ($Channel -eq 'release') {
         if (-not (Test-ReleaseTagName $Tag)) { throw "Tag inválida: '$Tag'." }
+        if (Test-CandidateTag $Tag) { throw "A tag $Tag é de candidata; use o canal rc." }
         $version = $Tag.Substring(1)
         if ($version -ne $recorded) { throw "A tag $Tag não corresponde à versão registrada $recorded." }
         $prefix, $suffix = $version.Split('-', 2)
         $suffix = $suffix ?? ''
         $revision = '0'
+    }
+    elseif ($Channel -eq 'rc') {
+        $prefix = Get-CandidateBaseVersion $Tag
+        if ((Compare-SemVer $prefix $recorded) -le 0) { throw "A candidata $Tag precisa ser maior que a versão registrada $recorded." }
+        $version = $Tag.Substring(1)
+        $suffix = $version.Split('-', 2)[1]
+        $revision = $suffix.Split('.')[1]
+        if ([int]$revision -gt 65535) { throw "Número da candidata acima de 65535: $Tag." }
     }
     else {
         $core = $recorded.Split('-', 2)[0].Split('.')

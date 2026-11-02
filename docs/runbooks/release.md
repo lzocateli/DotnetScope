@@ -35,6 +35,9 @@ O título do PR (squash) decide se a mudança **conta** para a próxima release;
    ```
 
 2. Revise o `CHANGELOG.md` e a versão; aguarde o check `Result`.
+   O `Result` inclui o `Preview gate`: antes do merge, gere e valide a candidata `vX.Y.Z-rc.N`
+   conforme o [runbook de release preview](release-preview.md) e a
+   [estratégia de release](../estrategia-de-release.md).
 3. Faça o merge (squash). O workflow `gw-release.yml`:
    - cria a tag `vX.Y.Z` e a GitHub Release em rascunho;
    - chama `publish.yml` no Environment `release` (aprove quando solicitado);
@@ -92,7 +95,9 @@ versão publicada.
 | Sintoma | Causa provável | Ação |
 | --- | --- | --- |
 | `Require release GitHub App` falha | `vars.RELEASE_APP_ID` ou `RELEASE_APP_PRIVATE_KEY` ausentes | Configure-os manualmente; nunca use PAT pessoal |
+| Run `Release` com `startup_failure` e nenhum job | Política de actions do repositório (ou da organização) bloqueia `googleapis/release-please-action` | Execute `groundwork github --sync`, que permite o SHA de `allowedActions`; se a organização restringir, libere-o lá |
 | Release PR sem checks | PR criado com `GITHUB_TOKEN` | Confirme que o App está instalado; o token do App dispara os checks |
+| `Preview gate` falha no Release PR | candidata ausente, não aceita ou de outro commit-base | Siga o [runbook de release preview](release-preview.md); em emergência, `Preview-Waiver:` |
 | Tag recusada | ruleset `gw-release-tags` sem o App no bypass | Execute `groundwork github` e revise `release_app_id` |
 | `Assert-ReleaseTag.ps1` falha | versão divergente entre tag e arquivos de versão | Corrija no Release PR; não crie tags manualmente |
 | Release continua em rascunho | publish ou manifesto falhou | Corrija a causa e use o modo `republish` |

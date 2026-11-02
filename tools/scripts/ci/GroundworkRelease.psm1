@@ -112,6 +112,28 @@ function Get-VersionFromFile {
     return $version
 }
 
+# Arquivos que o próprio Release PR altera: changelog-path e extra-files de cada pacote do
+# release-please-config.json, além do manifesto. São os únicos que a estável pode mudar em relação à candidata.
+function Get-ReleasePleaseFiles {
+    [OutputType([string[]])]
+    param([string] $Path = 'release-please-config.json')
+    $files = [System.Collections.Generic.List[string]]::new()
+    $files.Add('.release-please-manifest.json')
+    $files.Add('CHANGELOG.md')
+    if (Test-Path -LiteralPath $Path) {
+        $config = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -AsHashtable
+        foreach ($package in @(($config['packages'] ?? @{}).Values)) {
+            if ($package['changelog-path']) { $files.Add([string]$package['changelog-path']) }
+            foreach ($extra in @($package['extra-files'] ?? @())) {
+                $file = $extra -is [string] ? $extra : [string]$extra['path']
+                if ($file) { $files.Add($file.TrimStart('/')) }
+            }
+        }
+    }
+
+    return @($files | Select-Object -Unique)
+}
+
 function Get-ProjectVersionFiles {
     [OutputType([string[]])]
     param([Parameter(Mandatory)][hashtable] $Config)
@@ -308,6 +330,111 @@ function Get-ReleaseAssetText {
     }
 }
 
+function Get-PreviewPolicy {
+    <#
+    Lê "preview" e "deploy.previewEnvironment" de .github/ci-cd.json (docs/estrategia-de-release.md). Ausente
+    significa preview desligada, para projetos ainda não migrados. Só o sufixo "rc" é promovível; "acceptance" é
+    "deploy" (serviço) ou "approval" (aplicativo, aceite humano no Environment).
+    #>
+    [OutputType([hashtable])]
+    param([Parameter(Mandatory)][hashtable] $Config)
+    $preview = $Config['preview'] ?? @{}
+    if ($preview -isnot [hashtable]) { throw 'preview em .github/ci-cd.json deve ser um objeto.' }
+    $enabled = $preview['enabled'] ?? $false
+    $required = $preview['requiredForRelease'] ?? $enabled
+    if ($enabled -isnot [bool] -or $required -isnot [bool]) { throw 'preview.enabled e preview.requiredForRelease devem ser booleanos.' }
+    $suffix = [string]($preview['suffix'] ?? 'rc')
+    if ($suffix -cne 'rc') { throw "preview.suffix '$suffix' não suportado; use 'rc'." }
+    $acceptance = [string]($preview['acceptance'] ?? 'deploy')
+    if ($acceptance -cnotin @('deploy', 'approval')) { throw "preview.acceptance '$acceptance' inválido; use deploy ou approval." }
+    $deploy = $Config['deploy'] ?? @{}
+    $environment = [string]($deploy['previewEnvironment'] ?? 'quality')
+    if ($environment -notmatch '^[A-Za-z0-9_.-]{1,255}$' -or $environment -ieq 'production') {
+        throw "deploy.previewEnvironment '$environment' inválido; nunca production."
+    }
+
+    return @{ Enabled = $enabled; Required = $enabled -and $required; Suffix = $suffix; Acceptance = $acceptance; Environment = $environment }
+}
+
+function Test-CandidateTag {
+    <# Tag de candidata promovível: vX.Y.Z-rc.N (N inteiro sem zeros à esquerda). #>
+    [OutputType([bool])]
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Tag)
+    return $Tag -cmatch '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.(0|[1-9]\d*)$'
+}
+
+function Get-CandidateBaseVersion {
+    <# Versão estável de uma candidata: v1.4.0-rc.2 -> 1.4.0. #>
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string] $Tag)
+    if (-not (Test-CandidateTag $Tag)) { throw "Tag de candidata inválida: '$Tag'. Use vX.Y.Z-rc.N." }
+    return $Tag.Substring(1).Split('-', 2)[0]
+}
+
+function Get-TagCommit {
+    <# Commit apontado pela tag no checkout local; vazio se ausente. #>
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string] $Tag)
+    $commit = (git rev-parse --verify --quiet "refs/tags/$Tag^{commit}" 2>$null | Out-String).Trim()
+    return $commit -match '^[0-9a-f]{40}$' ? $commit : ''
+}
+
+function Find-ValidatedCandidate {
+    <#
+    Candidata publicada vX.Y.Z-rc.N com a versão pedida, cujo asset preview-acceptance.json registra sucesso no
+    Environment de preview. Com -Commit, exige também que a tag aponte para esse commit (commit-base do Release PR).
+    Devolve a candidata mais recente que atende ou $null. O asset é anexado pelo gw-deploy.yml depois do aceite.
+    #>
+    param(
+        [Parameter(Mandatory)][string] $Repository,
+        [Parameter(Mandatory)][string] $Version,
+        [Parameter(Mandatory)][string] $Environment,
+        [string] $Commit = ''
+    )
+
+    if (-not (Test-SemVer $Version) -or $Version.Contains('-')) { throw "Versão estável inválida: '$Version'." }
+    $all = Invoke-GhJson -Path "repos/$Repository/releases?per_page=100" -Paginate
+    $releases = @($all ?? @()) |
+        Where-Object { $_ -and -not $_['draft'] -and $_['prerelease'] -and (Test-CandidateTag ([string]$_['tag_name'])) -and (Get-CandidateBaseVersion $_['tag_name']) -eq $Version } |
+        Sort-Object -Property @{ Expression = { [int](([string]$_['tag_name']).Split('.')[-1]) } } -Descending
+    foreach ($release in $releases) {
+        $tag = [string]$release['tag_name']
+        if ($Commit -and (Get-TagCommit $tag) -ne $Commit) { continue }
+        $text = Get-ReleaseAssetText -Repository $Repository -Release $release -Name 'preview-acceptance.json'
+        if (-not $text) { continue }
+        try { $acceptance = ConvertFrom-Json -InputObject $text -AsHashtable -Depth 8 } catch { continue }
+        if ($acceptance['schemaVersion'] -eq 1 -and $acceptance['tag'] -ceq $tag -and $acceptance['environment'] -ceq $Environment -and $acceptance['result'] -ceq 'success') {
+            # ConvertFrom-Json converte datas ISO em DateTime; as mensagens usam sempre ISO 8601 em UTC.
+            if ($acceptance['acceptedAt'] -is [datetime]) { $acceptance['acceptedAt'] = $acceptance['acceptedAt'].ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
+            return @{ Tag = $tag; Release = $release; Acceptance = $acceptance }
+        }
+    }
+
+    return $null
+}
+
+function Find-PreviewWaiver {
+    <#
+    Rodapé "Preview-Waiver: <justificativa>" em algum commit de <desde>..<até>. Devolve a justificativa ou vazio.
+    Sem <desde> (primeira release), considera todo o histórico até <até>.
+    #>
+    [OutputType([string])]
+    param(
+        [string] $Since = '',
+        [Parameter(Mandatory)][string] $Until
+    )
+
+    $range = $Since ? "$Since..$Until" : $Until
+    $messages = (git log --format='%B%x00' $range 2>$null | Out-String)
+    if ($LASTEXITCODE -ne 0) { throw "Histórico $range indisponível; o checkout precisa de fetch-depth 0." }
+    # %x00 separa as mensagens e cola o NUL na última linha de cada uma, justamente onde fica o rodapé.
+    foreach ($line in $messages -split "[`n`0]") {
+        if ($line -cmatch '^Preview-Waiver:\s*(?<reason>\S.{0,299})\s*$') { return $Matches['reason'].Trim() }
+    }
+
+    return ''
+}
+
 function Write-GitHubOutput {
     param(
         [Parameter(Mandatory)][hashtable] $Values,
@@ -324,4 +451,5 @@ function Write-GitHubOutput {
 
 Export-ModuleMember -Function Test-SemVer, Test-ReleaseTagName, Compare-SemVer, Read-CiCdConfig, Get-AttestationPolicy, Get-VersionFromFile,
 Get-ProjectVersionFiles, Invoke-GhJson, Assert-ReleaseManifest, Assert-ReleaseEntries, Test-RollbackAllowed,
-Find-GitHubRelease, Save-ReleaseAsset, Get-ReleaseAssetText, Write-GitHubOutput
+Find-GitHubRelease, Save-ReleaseAsset, Get-ReleaseAssetText, Write-GitHubOutput, Get-PreviewPolicy, Test-CandidateTag,
+Get-CandidateBaseVersion, Get-TagCommit, Find-ValidatedCandidate, Find-PreviewWaiver, Get-ReleasePleaseFiles
