@@ -1,0 +1,259 @@
+# Gerenciado pelo Altivy.Groundwork (componente release-preview). Não edite: mudanças vão para o catálogo.
+# Release preview (docs/estrategia-de-release.md): disparo manual na branch padrão. Calcula a candidata
+# vX.Y.Z-rc.N da versão do Release PR aberto, marca a tag no commit-base do Release PR (aprovação no
+# Environment release), chama publish.yml com a versão da candidata, atesta o release-manifest.json e
+# publica como prerelease sem Latest. Não roda post-release.yml. Com deploy configurado, dispara o
+# gw-deploy.yml no Environment de preview; o aceite lá libera o preview gate do Release PR.
+#   gh workflow run gw-preview.yml --ref main
+name: Release preview
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-preview
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve candidate
+    if: ${{ github.ref_name == github.event.repository.default_branch }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+      environment: ${{ steps.version.outputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compute candidate version
+        id: version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: >
+          ./tools/scripts/ci/Get-PreviewVersion.ps1 -Repository $env:GITHUB_REPOSITORY -DefaultBranch $env:DEFAULT_BRANCH
+          -Commit $env:GITHUB_SHA -NotesPath candidate-notes.md -OutputPath $env:GITHUB_OUTPUT
+
+      - name: Upload candidate notes
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: candidate-notes
+          path: candidate-notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+  tag:
+    name: Create candidate tag
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Require release GitHub App
+        shell: bash
+        env:
+          APP_ID: ${{ vars.RELEASE_APP_ID }}
+          HAS_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY != '' }}
+        run: |
+          if [[ -z "$APP_ID" || "$HAS_PRIVATE_KEY" != "true" ]]; then
+            echo "::error::Configure vars.RELEASE_APP_ID e o secret RELEASE_APP_PRIVATE_KEY do App de release; só ele cria tags v*."
+            exit 1
+          fi
+
+      - name: Create GitHub App token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Download candidate notes
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: candidate-notes
+
+      - name: Create tag and draft prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$COMMIT" > /dev/null
+          jq -n --arg tag "$TAG" --rawfile body candidate-notes.md \
+            '{tag_name: $tag, name: $tag, body: $body, draft: true, prerelease: true, make_latest: "false"}' |
+            gh api --method POST "repos/$GITHUB_REPOSITORY/releases" --input - > /dev/null
+          echo "Tag $TAG criada em $COMMIT, com GitHub Release em rascunho (prerelease)."
+
+  context:
+    name: Candidate context
+    needs: [resolve, tag]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # Rascunhos de release só são listados para tokens com acesso de escrita.
+      contents: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate candidate tag and ancestry
+        id: tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          ./tools/scripts/ci/Assert-ReleaseTag.ps1 -Tag $env:RELEASE_TAG -DefaultBranch $env:DEFAULT_BRANCH -Candidate -OutputPath $env:GITHUB_OUTPUT
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/scripts/ci/Test-PublishedRelease.ps1 -Tag $env:RELEASE_TAG -Repository $env:GITHUB_REPOSITORY -Expect Draft
+          exit $LASTEXITCODE
+
+  publish:
+    name: Publish
+    needs: context
+    uses: ./.github/workflows/publish.yml
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      tag: ${{ needs.context.outputs.tag }}
+      version: ${{ needs.context.outputs.version }}
+      republish: false
+    secrets: inherit
+
+  finalize:
+    name: Finalize candidate
+    needs: [context, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.context.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.context.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.context.outputs.commit }}
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.context.outputs.tag }}
+          persist-credentials: false
+
+      - name: Download release entries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-entries-*
+          path: artifacts/release-entries
+          merge-multiple: true
+
+      - name: Read attestation policy
+        id: policy
+        shell: pwsh
+        run: |
+          Import-Module ./tools/scripts/ci/GroundworkRelease.psm1
+          $enabled = Get-AttestationPolicy -Config (Read-CiCdConfig)
+          if (-not $enabled) {
+            Write-Output '::warning title=Atestação desativada::"attestations": false em .github/ci-cd.json; artefatos sem atestação não são aceitos pelo deploy.'
+          }
+          "enabled=$($enabled.ToString().ToLowerInvariant())" | Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8
+
+      - name: Build release manifest
+        id: manifest
+        shell: pwsh
+        env:
+          ATTESTATION: ${{ steps.policy.outputs.enabled == 'true' && 'github' || 'none' }}
+        run: >
+          ./tools/scripts/ci/New-ReleaseManifest.ps1
+          -Tag $env:RELEASE_TAG -Version $env:RELEASE_VERSION -Commit $env:RELEASE_COMMIT
+          -Repository $env:GITHUB_REPOSITORY -EntriesPath artifacts/release-entries
+          -OutputPath artifacts/release-manifest.json -Attestation $env:ATTESTATION -GitHubOutputPath $env:GITHUB_OUTPUT
+
+      - name: Attest release manifest
+        if: ${{ steps.manifest.outputs.upload == 'true' && steps.policy.outputs.enabled == 'true' }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: artifacts/release-manifest.json
+
+      - name: Upload manifest and publish prerelease
+        shell: pwsh
+        env:
+          UPLOAD_MANIFEST: ${{ steps.manifest.outputs.upload }}
+        run: |
+          if ($env:UPLOAD_MANIFEST -eq 'true') {
+            gh release upload $env:RELEASE_TAG artifacts/release-manifest.json --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw 'Falha ao anexar release-manifest.json.' }
+          }
+
+          ./tools/scripts/ci/Test-PublishedRelease.ps1 -Tag $env:RELEASE_TAG -Repository $env:GITHUB_REPOSITORY -Publish -Prerelease
+          exit $LASTEXITCODE
+
+  quality:
+    name: Dispatch preview environment
+    needs: [resolve, context, finalize]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.context.outputs.tag }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+          sparse-checkout-cone-mode: false
+
+      - name: Dispatch deploy or acceptance on the candidate tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.context.outputs.tag }}
+          ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
+        run: |
+          set -euo pipefail
+          acceptance=$(jq -r '.preview.acceptance // "deploy"' .github/ci-cd.json)
+          automatic=$(jq -r '.deploy.autoDeployEnvironment // ""' .github/ci-cd.json)
+          if [[ ! -f .github/workflows/gw-deploy.yml ]]; then
+            echo "::warning::Sem o componente deploy (gw-deploy.yml); valide $RELEASE_TAG em $ENVIRONMENT e registre o aceite conforme docs/runbooks/release-preview.md."
+            exit 0
+          fi
+          if [[ "$acceptance" != "approval" && "$automatic" != "$ENVIRONMENT" ]]; then
+            echo "Candidata $RELEASE_TAG publicada. Dispare o deploy em $ENVIRONMENT na tag: gh workflow run gw-deploy.yml --ref $RELEASE_TAG -f environment=$ENVIRONMENT"
+            exit 0
+          fi
+          gh workflow run gw-deploy.yml --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_TAG" \
+            -f environment="$ENVIRONMENT" -f trigger=release
+          echo "Validação de $RELEASE_TAG em $ENVIRONMENT disparada; acompanhe e aprove no Environment."

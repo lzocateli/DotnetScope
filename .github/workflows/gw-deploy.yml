@@ -1,0 +1,156 @@
+# Gerenciado pelo Altivy.Groundwork (componente deploy). Não edite: mudanças vão para o catálogo.
+# Deploy somente de GitHub Release publicada: execute NA TAG (Use workflow from: Tags / vX.Y.Z).
+#   gh workflow run gw-deploy.yml --ref vX.Y.Z -f environment=<environment>
+# Redeploy e rollback usam o mesmo caminho com a tag desejada. Ver docs/runbooks/deploy-e-rollback.md.
+# Candidata vX.Y.Z-rc.N no Environment de preview: o sucesso vira o aceite (preview-acceptance.json)
+# lido pelo preview gate do Release PR (docs/estrategia-de-release.md).
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment de deploy (listado em deploy.environments de .github/ci-cd.json)
+        type: string
+        required: true
+      trigger:
+        description: manual ou release (auto-deploy disparado pelo gw-release.yml)
+        type: choice
+        default: manual
+        options:
+          - manual
+          - release
+
+permissions: {}
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
+      deployments: read
+    outputs:
+      version: ${{ steps.assert.outputs.version }}
+      tag: ${{ steps.assert.outputs.tag }}
+      rollback: ${{ steps.assert.outputs.rollback }}
+    steps:
+      - name: Require a tag
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [[ "$REF_TYPE" != "tag" ]]; then
+            echo "::error::Deploy só é aceito na tag de uma release publicada (Use workflow from: Tags)."
+            exit 1
+          fi
+
+      - name: Checkout tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Log in to GHCR for attestation checks
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+
+      - name: Assert deployable release
+        id: assert
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          DEPLOY_TRIGGER: ${{ inputs.trigger }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: >
+          ./tools/scripts/ci/Assert-DeployableRelease.ps1 -Tag $env:GITHUB_REF_NAME -Environment $env:DEPLOY_ENVIRONMENT
+          -Trigger $env:DEPLOY_TRIGGER -Actor $env:GITHUB_ACTOR -Repository $env:GITHUB_REPOSITORY
+          -DefaultBranch $env:DEFAULT_BRANCH -ManifestPath artifacts/release-manifest.json
+          -OutputPath $env:GITHUB_OUTPUT -SummaryPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload validated manifest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-manifest
+          path: artifacts/release-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy:
+    name: Deploy
+    needs: guard
+    uses: ./.github/workflows/deploy.yml
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    with:
+      version: ${{ needs.guard.outputs.version }}
+      environment: ${{ inputs.environment }}
+      manifest-artifact: release-manifest
+    secrets: inherit
+
+  accept:
+    name: Record candidate acceptance
+    needs: [guard, deploy]
+    if: ${{ needs.deploy.result == 'success' && contains(needs.guard.outputs.tag, '-rc.') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Record acceptance and refresh the Release PR
+        if: ${{ hashFiles('tools/scripts/ci/Add-PreviewAcceptance.ps1') != '' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.guard.outputs.tag }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >
+          ./tools/scripts/ci/Add-PreviewAcceptance.ps1 -Tag $env:TAG -Environment $env:DEPLOY_ENVIRONMENT
+          -Repository $env:GITHUB_REPOSITORY -DefaultBranch $env:DEFAULT_BRANCH -RunUrl $env:RUN_URL -Actor $env:GITHUB_ACTOR
+
+  summary:
+    name: Summary
+    needs: [guard, deploy]
+    if: ${{ always() && needs.guard.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Record deployment outcome
+        shell: bash
+        env:
+          TAG: ${{ needs.guard.outputs.tag }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          ROLLBACK: ${{ needs.guard.outputs.rollback }}
+          RESULT: ${{ needs.deploy.result }}
+        run: |
+          {
+            echo "## Deploy $TAG em $ENVIRONMENT"
+            echo ""
+            echo "- Resultado: $RESULT"
+            echo "- Rollback: $ROLLBACK"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [[ "$RESULT" == "success" ]]

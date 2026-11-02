@@ -15,6 +15,7 @@
     "default_workflow_permissions": "read",
     "can_approve_pull_request_reviews": false
   },
+  "allowedActions": ["googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7"],
   "dependabot": {
     "vulnerabilityAlerts": true,
     "automatedSecurityFixes": true
@@ -84,11 +85,27 @@
       "preventSelfReview": false,
       "reviewersFallback": "release-pr",
       "deploymentPolicies": [{ "name": "main", "type": "branch" }, { "name": "v*", "type": "tag" }]
+    },
+    {
+      "name": "quality",
+      "reviewers": ["lzocateli"],
+      "preventSelfReview": false,
+      "requireReviewers": true,
+      "deploymentPolicies": [{ "name": "v*", "type": "tag" }]
+    },
+    {
+      "name": "production",
+      "reviewers": ["lzocateli"],
+      "preventSelfReview": false,
+      "requireReviewers": true,
+      "deploymentPolicies": [{ "name": "v*", "type": "tag" }]
     }
   ],
+  "variables": [],
   "prerequisites": {
     "variables": ["RELEASE_APP_ID"],
-    "secrets": ["RELEASE_APP_PRIVATE_KEY"]
+    "secrets": ["RELEASE_APP_PRIVATE_KEY"],
+    "environmentSecrets": []
   },
   "legacyRulesets": ["main-integrity", "main-maintainer-only", "release-tags-protected"]
 }

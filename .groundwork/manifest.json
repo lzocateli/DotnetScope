@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "toolVersion": "0.5.0",
-  "catalogVersion": "0.5.0",
+  "toolVersion": "0.6.3",
+  "catalogVersion": "0.6.3",
   "parameters": {
-    "auto_deploy_environment": "",
+    "auto_deploy_environment": "quality",
     "commit_scopes": "cli,core,metadata,install,env,platform,linux,windows,macos,packaging,tests,docs,tooling,deps,actions,repo",
     "default_branch": "main",
     "dependabot_ecosystems": "github-actions,nuget,docker:/tools/build",
-    "deploy_environments": "",
+    "deploy_environments": "quality,production",
     "deploy_reviewers": "lzocateli",
     "dotnet_sdk_image": "lzocateli/dotnet-sdk:10.0.402-noble-v1",
     "dotnet_solution": "",
@@ -17,6 +17,11 @@
     "issue_areas": "CLI,Resolu\u00E7\u00E3o de vers\u00F5es,Instala\u00E7\u00E3o,Ambiente e PATH,Linux,Windows,macOS,Seguran\u00E7a,Empacotamento,CI/CD,Documenta\u00E7\u00E3o,Testes",
     "legacy_rulesets": "main-integrity,main-maintainer-only,release-tags-protected",
     "license": "MIT",
+    "nuget_auth": "trusted",
+    "nuget_feed": "github",
+    "nuget_rc_feed": "",
+    "nuget_user": "",
+    "preview_acceptance": "approval",
     "project_description": "O DotnetScope \u00E9 uma CLI Native AOT que instala, lista, valida e remove SDKs e runtimes .NET nos escopos user e global, com verifica\u00E7\u00E3o de integridade e configura\u00E7\u00E3o opcional do ambiente do usu\u00E1rio.",
     "project_name": "DotnetScope",
     "project_slug": "dotnetscope",
@@ -34,7 +39,9 @@
     "secret-scanning",
     "ci",
     "release",
+    "release-preview",
     "publish-github-assets",
+    "deploy",
     "dependency-updates",
     "repository-policy"
   ],
@@ -53,7 +60,7 @@
     },
     ".github/CI-CD.md": {
       "component": "ci",
-      "sha256": "0a6b1c1559f6b811c6e4bed0c4e5924409f82c7ad505d2a6a8ae9dd890338da7"
+      "sha256": "80c6c9f6cd2137d3bcb2f89afcac51d95bb3b37de929b643bbe488e43e1999c0"
     },
     ".github/CODEOWNERS": {
       "component": "core",
@@ -93,7 +100,7 @@
     },
     ".github/REPOSITORY-POLICY.md": {
       "component": "repository-policy",
-      "sha256": "77fd3a3471a5765584a06b61aada38933d7b193dff8c1c1f61fc02983e235545"
+      "sha256": "8ab832110b42764de3c95c294b62d1aeed86d5b69093cf0a7e2afa09c196ad0d"
     },
     ".github/SECRET-SCANNING.md": {
       "component": "secret-scanning",
@@ -121,7 +128,11 @@
     },
     ".github/repository-policy.json": {
       "component": "repository-policy",
-      "sha256": "7e1eefbde536adccf4338d220fa874ebf7919bb759fba47b4078dbd1de2572a6"
+      "sha256": "3637704e4abf27faf4a41fbc69c749bab389e8ac8b328333db60d1bc029466ad"
+    },
+    ".github/workflows/gw-deploy.yml": {
+      "component": "deploy",
+      "sha256": "5de195cd8701d2290a5c392e8cee0bee3f6f65a0138118c3494c556ec4b4349d"
     },
     ".github/workflows/gw-dotnet.yml": {
       "component": "ci",
@@ -133,7 +144,7 @@
     },
     ".github/workflows/gw-gitleaks.yml": {
       "component": "ci",
-      "sha256": "4a1cf6b0ca1225468c58ec1f555eb2d3a60ab1d62a081b305a33331d44418047"
+      "sha256": "d0645fd4fe0b3733a976276f55e9e4418fd54c0d240b2091b828baefa6edb2bb"
     },
     ".github/workflows/gw-node.yml": {
       "component": "ci",
@@ -141,35 +152,75 @@
     },
     ".github/workflows/gw-pr-hygiene.yml": {
       "component": "ci",
-      "sha256": "b884f9ddac4a9ea19006c06269c76e3032572c30a4b17e630543fe13cbb88ca9"
+      "sha256": "cf3346f5dd1123ec5abc1228cccb385ba9e0c4fc47beae16d30002bca74cf472"
+    },
+    ".github/workflows/gw-preview.yml": {
+      "component": "release-preview",
+      "sha256": "ea4209285e0393eeb1bebee4437c6f5abc105bb16461ac5ed13e1645b51baa21"
     },
     ".github/workflows/gw-release.yml": {
       "component": "release",
-      "sha256": "cd884359cc0eafea8bd7c75ab96606c7fd88c3a2095d77ed8dafea66826a097c"
+      "sha256": "7a7a67779ceeaf68d0306ad326e66dc61c857d4cecc0ed26ae26bd1ba15b3d04"
     },
     ".gitleaks.toml": {
       "component": "secret-scanning",
       "sha256": "de9544e772d44eec8cdbd1163e428c07d160821967075916034ff339d18e0285"
     },
+    "docs/estrategia-de-release.md": {
+      "component": "release-preview",
+      "sha256": "93d58f769d94c63b294aae83ed738a6432a807d5c2d3ad2e5b42ab4ce0083864"
+    },
+    "docs/runbooks/deploy-e-rollback.md": {
+      "component": "deploy",
+      "sha256": "d3e313b7b83395df1c0dc2fd68a4a7e55ace83823fd0d6506e993ff789fcc171"
+    },
+    "docs/runbooks/release-preview.md": {
+      "component": "release-preview",
+      "sha256": "f83559dfb68609f82d74e1ce00ebe61b607d2b427dc9602253481b09c333fe1c"
+    },
     "docs/runbooks/release.md": {
       "component": "release",
-      "sha256": "e938733dbac7a0df79753d75979a2ee1481d878cdd821f3c42c7440b255cceb9"
+      "sha256": "2d202e413ec4f80507297865c8048f1a485aee4f0ba792d0ea357c6510fc3257"
+    },
+    "tools/scripts/ci/Add-PreviewAcceptance.ps1": {
+      "component": "release-preview",
+      "sha256": "d2ed1665d1d67f902fb33a3b685f49ae4aa998f19f51edc38dd0a69dee46fac6"
     },
     "tools/scripts/ci/Assert-ArtifactVersion.ps1": {
       "component": "release",
       "sha256": "0fca851b62cfaab991da7367bb94dd5aef3d2d8775f85d37a1442ff0bf40374f"
     },
+    "tools/scripts/ci/Assert-DeployableRelease.ps1": {
+      "component": "deploy",
+      "sha256": "4ee2535ed407b24684c78f18d4c97578f97e85103e2575d5caf93249a391cab0"
+    },
+    "tools/scripts/ci/Assert-PreviewGate.ps1": {
+      "component": "release-preview",
+      "sha256": "ea2697ce8d98e69d45da8c115111347ea991356231ac24d0d71108557d213e18"
+    },
     "tools/scripts/ci/Assert-ReleaseTag.ps1": {
       "component": "release",
-      "sha256": "5a28cce85718d55573e2c935503bfc672a216a478e5058e8b4b17641003bb458"
+      "sha256": "eec7d21f227207c0cd88e39148e96961d7d39dd7032858075e4bdb399cd3ccba"
     },
     "tools/scripts/ci/Get-BuildVersion.ps1": {
       "component": "release",
-      "sha256": "9f00894b538b2f833db672ee23f310e1ded32c2127db0e7eaed798742614f9ca"
+      "sha256": "4e258f724f5a909ee8db45a6c0763856316c3b5f5f3b12c15f8b40350bd2ba4f"
+    },
+    "tools/scripts/ci/Get-DeployedRelease.ps1": {
+      "component": "deploy",
+      "sha256": "39fe14057ba3c8cde9c85025a31e21a4084311997da119e856c2b702e5c089c2"
+    },
+    "tools/scripts/ci/Get-PreviewVersion.ps1": {
+      "component": "release-preview",
+      "sha256": "2e0b26fd8d5db2aee8f5fe6cd0ece01f17f02225fd046de4bf97bb46468f96c7"
+    },
+    "tools/scripts/ci/Get-ReleaseManifest.ps1": {
+      "component": "deploy",
+      "sha256": "7310533b249076d3b1d80389124bf432fa0b8f84a7cf7ef9ccda66a78395113c"
     },
     "tools/scripts/ci/GroundworkRelease.psm1": {
       "component": "release",
-      "sha256": "64108e3406d38dd2de8c5c51faec0cd09b17b077f2b8bbf5ceb96fda830d1e18"
+      "sha256": "e932e7a3a9853d82ddc26c6a0c47267eef02e453ee2d464e1940858f33d6a043"
     },
     "tools/scripts/ci/New-ReleaseManifest.ps1": {
       "component": "release",
@@ -185,7 +236,7 @@
     },
     "tools/scripts/ci/Test-PublishedRelease.ps1": {
       "component": "release",
-      "sha256": "6794e5f375e7f17ad5c8f1b871e71f9f5bc833cdf6be9472ea2ee930eedd288a"
+      "sha256": "0b62c567f8d280afb5ecfd11252bad5319d286a8fd4c9810b4d38fefa7bbc57e"
     },
     "tools/scripts/ci/Test-PullRequestTitle.ps1": {
       "component": "ci",

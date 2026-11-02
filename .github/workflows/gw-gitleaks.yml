@@ -26,19 +26,24 @@ jobs:
         shell: pwsh
         run: ./tools/scripts/test-gitleaks.ps1
 
+      # Um arquivo por commit (mensagem e patch), varrido em modo dir. Pelo stdin, o gitleaks corta a
+      # entrada em blocos cujos limites dependem do tamanho do histórico inteiro: uma linha cortada
+      # escapa das allowlists ancoradas e o achado aparece ou some a cada novo commit.
       - name: Scan full Git history
         shell: bash
         run: |
           set -euo pipefail
+          patches=$(mktemp -d "$RUNNER_TEMP/gitleaks.XXXXXX")
+          git log --all --full-history -p -- |
+            awk -v dir="$patches" '/^commit [0-9a-f]+$/ { if (file) close(file); file = dir "/" $2 ".patch" } file { print > file }'
+          chmod -R a+rX "$patches"
+          echo "$(find "$patches" -type f | wc -l) commits preparados para a varredura."
           config_args=()
+          scan_args=(dir /history --redact)
           if [[ -f .gitleaks.toml ]]; then
             config_args=(--volume "$GITHUB_WORKSPACE/.gitleaks.toml:/gitleaks.toml:ro")
-          fi
-          scan_args=(stdin --redact)
-          if [[ -f .gitleaks.toml ]]; then
             scan_args+=(--config /gitleaks.toml)
           fi
-          git log --all --full-history -p -- |
-            docker run --rm -i --read-only "${config_args[@]}" \
-              docker.io/lzocateli/gitleaks:8.30.1 \
-              "${scan_args[@]}"
+          docker run --rm --read-only --volume "$patches:/history:ro" "${config_args[@]}" \
+            docker.io/lzocateli/gitleaks:8.30.1 \
+            "${scan_args[@]}"

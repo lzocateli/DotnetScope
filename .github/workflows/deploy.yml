@@ -1,0 +1,111 @@
+# Semente do Altivy.Groundwork (componente deploy): pertence ao projeto.
+# Contrato (ver .github/CI-CD.md e docs/runbooks/deploy-e-rollback.md):
+# - chamado somente por gw-deploy.yml, depois do guard, na tag da release;
+# - recebe apenas version, environment e o artifact com o release-manifest.json validado;
+# - não aceita versão, imagem ou digest livres: tudo vem do manifesto;
+# - todo job que altera o ambiente declara "environment: ${{ inputs.environment }}";
+# - é idempotente: aplicar a mesma release duas vezes leva ao mesmo estado;
+# - termina com smoke test que confirma a versão em execução.
+# DotnetScope é uma CLI distribuída, sem servidor: "deploy" confere que os assets publicados
+# na GitHub Release são exatamente os do manifesto atestado, e o smoke executa o pacote linux-x64
+# (Test-AotPackage.ps1) em containers limpos. Em quality, com aceite approval, a aprovação humana do
+# Environment vem antes: aprove somente depois de testar a candidata (docs/runbooks/deploy-projeto.md).
+# A distribuição (Homebrew, winget) continua no post-release.yml da estável; production só confere.
+name: Deploy (project)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Versão da release validada pelo guard
+        type: string
+        required: true
+      environment:
+        description: Environment de deploy
+        type: string
+        required: true
+      manifest-artifact:
+        description: Artifact com o release-manifest.json validado
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  deploy:
+    name: Apply release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: ${{ inputs.environment }}
+    permissions:
+      contents: read
+    steps:
+      - name: Download validated manifest
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.manifest-artifact }}
+          path: artifacts
+
+      - name: Verify published assets against the manifest
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          $manifest = Get-Content -LiteralPath artifacts/release-manifest.json -Raw | ConvertFrom-Json -AsHashtable
+          if ($manifest['version'] -cne $env:VERSION) { throw "Manifesto da versão $($manifest['version']), esperado $env:VERSION." }
+          $assets = @($manifest['artifacts'] | Where-Object { $_['kind'] -eq 'asset' })
+          if ($assets.Count -eq 0) { throw 'Manifesto sem assets.' }
+          New-Item -ItemType Directory -Force -Path artifacts/release | Out-Null
+          gh release download $manifest['tag'] --repo $env:GITHUB_REPOSITORY --dir artifacts/release --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao baixar os assets de $($manifest['tag'])." }
+          foreach ($asset in $assets) {
+            $path = Join-Path artifacts/release $asset['name']
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Asset ausente na release: $($asset['name'])." }
+            $digest = 'sha256:' + (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($digest -cne $asset['digest']) { throw "Digest divergente em $($asset['name']): $digest, manifesto $($asset['digest'])." }
+          }
+          Write-Output "$($assets.Count) assets de $($manifest['tag']) conferidos com o manifesto atestado em ${{ inputs.environment }}."
+
+  smoke:
+    name: Smoke test
+    needs: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/v${{ inputs.version }}
+          persist-credentials: false
+
+      - name: Download validated manifest
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.manifest-artifact }}
+          path: artifacts
+
+      - name: Run the published linux-x64 package
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          # Smoke do pacote publicado, não de um build novo: os mesmos assets conferidos no job anterior.
+          $tag = "v$env:VERSION"
+          New-Item -ItemType Directory -Force -Path artifacts/release | Out-Null
+          gh release download $tag --repo $env:GITHUB_REPOSITORY --dir artifacts/release --clobber `
+            --pattern 'dotnetscope-linux-x64.tar.gz' --pattern 'dotnetscope-linux-x64.deb' --pattern 'dotnetscope-linux-x64.spdx.json' --pattern 'SHA256SUMS'
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao baixar o pacote linux-x64 de $tag." }
+          # Na candidata, os arquivos de versão ainda são da release anterior: o prefixo vem da versão.
+          $prefix, $suffix = $env:VERSION -split '-', 2
+          [xml] $props = Get-Content -LiteralPath Directory.Build.props -Raw
+          $props.SelectSingleNode('/Project/PropertyGroup/VersionPrefix').InnerText = $prefix
+          $props.Save((Join-Path $PWD 'Directory.Build.props'))
+          $arguments = @{ Rid = 'linux-x64'; Engine = 'docker'; ReleaseDirectory = 'artifacts/release' }
+          if ($suffix) { $arguments.VersionSuffix = $suffix }
+          ./tools/scripts/Test-AotPackage.ps1 @arguments
+          exit $LASTEXITCODE

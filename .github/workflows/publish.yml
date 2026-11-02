@@ -4,6 +4,8 @@
 #   dos instaladores na tag, SBOM atestado e assets anexados a GitHub Release em rascunho no
 #   Environment `release` (gw-github-assets.yml, com atestacao de proveniencia). Homebrew e
 #   winget rodam em post-release.yml, com a release ja publica.
+# - workflow_call de gw-preview.yml com a candidata vX.Y.Z-rc.N: mesma publicacao, versao da tag,
+#   publicada como prerelease sem Latest e validada no Environment quality.
 # - pull_request que altera a cadeia de release e workflow_dispatch: build, smoke e testes
 #   dos instaladores, sem publicar.
 name: Publish
@@ -58,6 +60,8 @@ jobs:
       contents: read
     outputs:
       publish: ${{ steps.version.outputs.publish }}
+      version_prefix: ${{ steps.version.outputs.version_prefix }}
+      version_suffix: ${{ steps.version.outputs.version_suffix }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,16 +78,26 @@ jobs:
           [xml] $props = Get-Content -LiteralPath Directory.Build.props -Raw
           $prefix = @($props.Project.PropertyGroup | ForEach-Object { $_.VersionPrefix } | Where-Object { $_ })[0]
           $publish = 'false'
+          $suffix = ''
           if ($env:TAG) {
+            if ($env:TAG -cmatch '^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))-rc\.(0|[1-9]\d*)$') {
+              # Candidata do gw-preview.yml (docs/estrategia-de-release.md): a tag fica no commit-base do
+              # Release PR, antes do bump; a versao vem da tag, e build e smoke sobrescrevem o VersionPrefix.
+              $prefix = $Matches[1]
+              $suffix = "rc.$($Matches[2])"
+            }
             # gw-release.yml ja validou tag, versoes e ancestralidade; aqui confirma o checkout da tag.
-            if ($env:TAG -cne "v$prefix") {
+            elseif ($env:TAG -cne "v$prefix") {
               Write-Output "::error::Tag '$($env:TAG)' difere de VersionPrefix $prefix em Directory.Build.props."
               exit 1
             }
             $publish = 'true'
           }
           "publish=$publish" >> $env:GITHUB_OUTPUT
-          Write-Output "Versao: $prefix (publicar: $publish)"
+          "version_prefix=$prefix" >> $env:GITHUB_OUTPUT
+          "version_suffix=$suffix" >> $env:GITHUB_OUTPUT
+          $display = if ($suffix) { "$prefix-$suffix" } else { $prefix }
+          Write-Output "Versao: $display (publicar: $publish)"
 
       - name: Build and tests in container
         shell: pwsh
@@ -126,8 +140,14 @@ jobs:
         shell: pwsh
         env:
           RID: ${{ matrix.rid }}
+          VERSION_PREFIX: ${{ needs.validate.outputs.version_prefix }}
+          VERSION_SUFFIX: ${{ needs.validate.outputs.version_suffix }}
         run: |
+          [xml] $props = Get-Content -LiteralPath Directory.Build.props -Raw
+          $props.SelectSingleNode('/Project/PropertyGroup/VersionPrefix').InnerText = $env:VERSION_PREFIX
+          $props.Save((Join-Path $PWD 'Directory.Build.props'))
           $arguments = @{ Rid = $env:RID }
+          if (-not [string]::IsNullOrWhiteSpace($env:VERSION_SUFFIX)) { $arguments.VersionSuffix = $env:VERSION_SUFFIX }
           if ($IsLinux) { $arguments.Engine = 'docker' }
           ./tools/scripts/Publish-Aot.ps1 @arguments
           exit $LASTEXITCODE
@@ -176,11 +196,17 @@ jobs:
         shell: pwsh
         env:
           RIDS: ${{ matrix.rids }}
+          VERSION_PREFIX: ${{ needs.validate.outputs.version_prefix }}
+          VERSION_SUFFIX: ${{ needs.validate.outputs.version_suffix }}
         run: |
+          [xml] $props = Get-Content -LiteralPath Directory.Build.props -Raw
+          $props.SelectSingleNode('/Project/PropertyGroup/VersionPrefix').InnerText = $env:VERSION_PREFIX
+          $props.Save((Join-Path $PWD 'Directory.Build.props'))
           ./tools/scripts/Publish-Aot.ps1 -ChecksumsOnly
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           foreach ($rid in $env:RIDS -split ' ') {
             $arguments = @{ Rid = $rid }
+            if (-not [string]::IsNullOrWhiteSpace($env:VERSION_SUFFIX)) { $arguments.VersionSuffix = $env:VERSION_SUFFIX }
             if ($IsLinux) { $arguments.Engine = 'docker' }
             ./tools/scripts/Test-AotPackage.ps1 @arguments
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

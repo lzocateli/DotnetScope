@@ -21,6 +21,11 @@ consegue fazer merge com o `Result` vermelho nem com histórico não linear.
 - Merge somente squash, com título e corpo do PR; branch apagada após o merge; botão de
   atualização da branch habilitado.
 - `GITHUB_TOKEN` somente leitura por padrão e sem permissão de aprovar PRs.
+- Actions permitidas: com a política "selecionadas", as actions do GitHub e cada action de
+  terceiros dos workflows gerenciados, fixada pelo SHA listado em `allowedActions`
+  (`googleapis/release-please-action`). Sem isso o GitHub recusa o workflow antes de
+  qualquer job (`startup_failure`). O `--sync` só acrescenta esses padrões; não troca o modo
+  da política nem remove padrões existentes. Restrição na organização precisa ser liberada lá.
 - Alertas e security updates do Dependabot habilitados.
 - Em repositórios públicos, secret scanning e push protection habilitados.
 
@@ -29,6 +34,8 @@ consegue fazer merge com o `Result` vermelho nem com histórico não linear.
 - `release`: revisores `@lzocateli`; aceita `main` e `tag:v*`
   (publicação inicial e `republish`). Em repositório privado sem plano que suporte revisores, o
   controle humano é o merge do Release PR sob `gw-main-review` (reportado como *compensado*).
+- `quality`: aceita **somente** `tag:v*`; revisores `@lzocateli`. É o que impede, no próprio GitHub, deploy fora de uma release.
+- `production`: aceita **somente** `tag:v*`; revisores `@lzocateli` (obrigatórios). É o que impede, no próprio GitHub, deploy fora de uma release.
 
 `prevent_self_review` fica desligado para que o mantenedor único possa aprovar.
 

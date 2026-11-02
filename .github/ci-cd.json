@@ -9,9 +9,16 @@
   },
   "versionFiles": ["Directory.Build.props"],
   "publishSnapshots": false,
+  "preview": {
+    "enabled": true,
+    "suffix": "rc",
+    "requiredForRelease": true,
+    "acceptance": "approval"
+  },
   "deploy": {
-    "environments": [],
-    "autoDeployEnvironment": ""
+    "environments": ["quality", "production"],
+    "previewEnvironment": "quality",
+    "autoDeployEnvironment": "quality"
   },
   "attestations": true,
   "rollbackMinimumVersion": "0.0.0"

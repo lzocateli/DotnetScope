@@ -197,6 +197,24 @@ jobs:
         with:
           subject-path: artifacts/release-manifest.json
 
+      - name: Record release preview validation
+        shell: pwsh
+        run: |
+          # Linha automática das notas (docs/estrategia-de-release.md): candidata validada ou ausência dela. Idempotente.
+          # O PATCH repete tag_name: num rascunho, editar sem ele desassocia a tag (a release vira untagged-*).
+          Import-Module ./tools/scripts/ci/GroundworkRelease.psm1
+          $preview = Get-PreviewPolicy -Config (Read-CiCdConfig)
+          if (-not $preview.Enabled -or $env:RELEASE_VERSION.Contains('-')) { exit 0 }
+          $release = Find-GitHubRelease -Repository $env:GITHUB_REPOSITORY -Tag $env:RELEASE_TAG
+          $body = [string]($release['body'] ?? '')
+          if ($body.Contains('<!-- gw-release-preview -->')) { exit 0 }
+          $candidate = Find-ValidatedCandidate -Repository $env:GITHUB_REPOSITORY -Version $env:RELEASE_VERSION -Environment $preview.Environment
+          $line = $null -ne $candidate `
+            ? "Validada na [$($candidate.Tag)](../../releases/tag/$($candidate.Tag)) ($($preview.Environment), $($candidate.Acceptance['acceptedAt']))." `
+            : 'Sem candidata validada: liberada por Preview-Waiver ou com a preview opcional.'
+          Invoke-GhJson -Path "repos/$env:GITHUB_REPOSITORY/releases/$($release['id'])" -Method PATCH -Body @{ tag_name = $env:RELEASE_TAG; body = "$body`n`n---`n<!-- gw-release-preview -->`n$line" } | Out-Null
+          Write-Output $line
+
       - name: Upload manifest and publish release
         shell: pwsh
         env:

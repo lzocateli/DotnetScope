@@ -24,6 +24,10 @@ Exists, Draft ou Published.
 .PARAMETER Publish
 Publica a release em rascunho e confirma.
 
+.PARAMETER Prerelease
+Com -Publish, publica como prerelease e sem Latest (candidata vX.Y.Z-rc.N) e confirma as
+duas marcas; sem -Publish, exige que a release já esteja marcada como prerelease.
+
 .EXAMPLE
 ./tools/scripts/ci/Test-PublishedRelease.ps1 -Tag v1.4.0 -Expect Published
 
@@ -44,6 +48,7 @@ param(
     [ValidateSet('', 'Exists', 'Draft', 'Published')]
     [string] $Expect = '',
     [switch] $Publish,
+    [switch] $Prerelease,
     [Alias('h')]
     [switch] $Help,
     [Parameter(ValueFromRemainingArguments)]
@@ -74,7 +79,9 @@ try {
     if ($Publish) {
         if ($state -eq 'Missing') { throw "Release $Tag inexistente; nada a publicar." }
         if ($state -eq 'Draft') {
-            Invoke-GhJson -Path "repos/$Repository/releases/$($release['id'])" -Method PATCH -Body @{ draft = $false } | Out-Null
+            # tag_name sempre presente: editar um rascunho sem ele desassocia a tag.
+            $body = $Prerelease ? @{ tag_name = $Tag; draft = $false; prerelease = $true; make_latest = 'false' } : @{ tag_name = $Tag; draft = $false }
+            Invoke-GhJson -Path "repos/$Repository/releases/$($release['id'])" -Method PATCH -Body $body | Out-Null
             $release = Find-GitHubRelease -Repository $Repository -Tag $Tag
             $state = $null -eq $release ? 'Missing' : ($release['draft'] ? 'Draft' : 'Published')
             if ($state -ne 'Published') { throw "Publicação de $Tag não confirmada (estado: $state)." }
@@ -83,6 +90,10 @@ try {
         else {
             Write-Output "Release $Tag já estava publicada; nada alterado."
         }
+    }
+
+    if ($Prerelease -and $state -ne 'Missing' -and -not $release['prerelease']) {
+        throw "Release $Tag não está marcada como prerelease."
     }
 
     $conforms = switch ($Expect) {

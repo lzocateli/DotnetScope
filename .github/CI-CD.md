@@ -18,6 +18,11 @@ processo são feitas no catálogo do Groundwork e chegam ao projeto por `groundw
 5. O merge humano do Release PR cria a tag `vX.Y.Z` e a GitHub Release em rascunho, chama
    `publish.yml` no Environment `release`, gera e atesta o `release-manifest.json`, só
    então publica a release e, com ela pública, chama `post-release.yml`.
+   Antes desse merge, `gw-preview.yml` publica a candidata `vX.Y.Z-rc.N`, que é validada em
+   `quality`; o `Preview gate` do Release PR exige essa validação
+   ([estratégia de release](../docs/estrategia-de-release.md)).
+6. O deploy acontece somente por `gw-deploy.yml`, executado na tag de uma release
+   publicada; redeploy e rollback usam o mesmo caminho.
 
 ## Workflows
 
@@ -31,7 +36,10 @@ processo são feitas no catálogo do Groundwork e chegam ao projeto por `groundw
 | `gw-release.yml` | gerenciado | Release PR, tag, publish, manifesto atestado e auto-deploy opcional |
 | `publish.yml` | semente | publicação dos artefatos da release |
 | `post-release.yml` | semente | distribuição que exige a release pública (por padrão, nenhuma) |
+| `gw-preview.yml` | gerenciado | candidata `vX.Y.Z-rc.N` do Release PR, prerelease atestada e validação em `quality` |
 | `gw-github-assets.yml` | gerenciado | assets da GitHub Release idempotentes por SHA-256 |
+| `gw-deploy.yml` | gerenciado | guard, deploy e resumo; somente `workflow_dispatch` na tag |
+| `deploy.yml` | semente | implantação idempotente e smoke test do projeto |
 
 Arquivos **gerenciados** (`gw-*.yml`, `tools/scripts/ci/*`, este documento e os runbooks
 padrão) têm SHA-256 registrado em `.groundwork/manifest.json`; `Test-ManagedFiles.ps1`
@@ -42,8 +50,11 @@ Arquivos **semente** são criados uma vez e pertencem ao projeto.
 ## Contratos das sementes
 
 - `.github/ci-cd.json`: `defaultBranch`, `commitScopes`, `dotnet.sdkImage`, `dotnet.solution`,
-  `versionFiles`, `publishSnapshots`, `deploy.environments`, `deploy.autoDeployEnvironment`,
-  `attestations` e `rollbackMinimumVersion`. É lido pelos workflows e scripts gerenciados.
+  `versionFiles`, `publishSnapshots`, `preview` (`enabled`, `suffix`, `requiredForRelease`,
+  `acceptance`), `deploy.environments`, `deploy.previewEnvironment`, `deploy.autoDeployEnvironment`,
+  `nuget` (`feed`, `rcFeed`, `auth`), `attestations` e `rollbackMinimumVersion`. É lido pelos
+  workflows e scripts gerenciados. Bloco `preview` ausente desliga as candidatas; bloco `nuget`
+  ausente equivale a `github` e `apikey`.
 - `attestations`: padrão `true`. Use `false` somente quando o plano do GitHub não oferece atestação
   de artefatos (repositório privado fora do Enterprise Cloud). Com `false`, manifesto, imagens e
   assets não são atestados, o manifesto registra `"attestation": "none"` e o guard de deploy recusa
@@ -60,6 +71,9 @@ Arquivos **semente** são criados uma vez e pertencem ao projeto.
   `republish` o executa de novo.
 - `rollbackMinimumVersion`: atualize no mesmo PR que impedir a volta para versões anteriores
   (migração *contract*, remoção de protocolo N-1, formato de dado incompatível).
+- `deploy.yml`: `workflow_call` com `version`, `environment` e `manifest-artifact`; recebe
+  somente dados do manifesto validado pelo guard, declara `environment` nos jobs que alteram o
+  ambiente, é idempotente e termina com smoke test.
 
 ## Pré-requisitos
 - GitHub App de release instalado no repositório, `vars.RELEASE_APP_ID` e o secret
@@ -69,6 +83,10 @@ Arquivos **semente** são criados uma vez e pertencem ao projeto.
   `groundwork github --sync` (ver [REPOSITORY-POLICY.md](REPOSITORY-POLICY.md)).
 
 ## Runbooks
+- [Estratégia de release](../docs/estrategia-de-release.md)
+- [Release preview](../docs/runbooks/release-preview.md)
 - [Release](../docs/runbooks/release.md)
+- [Deploy, redeploy e rollback](../docs/runbooks/deploy-e-rollback.md)
+- [Deploy específico do projeto](../docs/runbooks/deploy-projeto.md)
 - Atualização do pipeline: `groundwork update --dry-run`, `groundwork update` e
   `groundwork github` a cada nova versão do Groundwork.
